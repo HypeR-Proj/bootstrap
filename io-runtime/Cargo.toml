@@ -1,0 +1,46 @@
+# SPDX-FileCopyrightText: 2026 roolrz
+# SPDX-License-Identifier: Apache-2.0
+
+[package]
+workspace = "../../../app"
+name = "hyper-io-runtime"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+# Test modules are included by their production library owners.
+autotests = false
+
+[[bin]]
+name = "hyper-io-runtime"
+path = "src/main.rs"
+test = false
+bench = false
+
+[features]
+storage-probe = []
+broker-test = []
+userspace-device-test = []
+physical-retirement-probe = []
+
+[[bin]]
+name = "hyper-storage-probe"
+path = "tests/fixtures/storage_probe.rs"
+required-features = ["storage-probe"]
+test = false
+bench = false
+
+[dependencies]
+hyper-block.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+hyper-os = { workspace = true, features = ["std"] }
+hyper-rt.workspace = true
+hyper-service.workspace = true
+hyper-vm-image.workspace = true
+hyper-vm-policy.workspace = true
+hyper-vm-support.workspace = true
+
+[lints]
+workspace = true

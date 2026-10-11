@@ -1,0 +1,17 @@
+{
+  "SPDX-FileCopyrightText": "2026 roolrz",
+  "SPDX-License-Identifier": "Apache-2.0",
+  "format": "hyper.vm-config",
+  "virtual-machines": [
+    {
+      "name": "alpine",
+      "image": "/boot/vm/alpine.itb",
+      "autostart": true,
+      "configuration": {
+        "memory-bytes": 268435456,
+        "vcpus": 1,
+        "bootargs": "console=ttyS0 earlycon=uart8250,mmio,0x10000000 rdinit=/init loglevel=7"
+      }
+    }
+  ]
+}

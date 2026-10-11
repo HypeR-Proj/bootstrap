@@ -1,0 +1,384 @@
+{
+  "SPDX-FileCopyrightText": "2026 roolrz",
+  "SPDX-License-Identifier": "Apache-2.0",
+  "format": "hyper.service-manifest",
+  "virtual-machines": {
+    "config": "/boot/etc/hyper/vms.json"
+  },
+  "services": [
+    {
+      "name": "console-input",
+      "image": "/svc/console-input",
+      "critical": true,
+      "restart": "never",
+      "after": [],
+      "capabilities": [
+        {
+          "source": "bootstrap.console",
+          "purpose": "console.system",
+          "operation": "duplicate",
+          "rights": [
+            "wait",
+            "read"
+          ]
+        },
+        {
+          "source": "bootstrap.console-input-channel",
+          "purpose": "console.data",
+          "operation": "move",
+          "rights": [
+            "wait",
+            "write"
+          ]
+        }
+      ],
+      "loader": "bootstrap"
+    },
+    {
+      "name": "console-output",
+      "image": "/svc/console-output",
+      "critical": true,
+      "restart": "never",
+      "after": [],
+      "capabilities": [
+        {
+          "source": "bootstrap.console",
+          "purpose": "console.system",
+          "operation": "duplicate",
+          "rights": [
+            "wait",
+            "write"
+          ]
+        },
+        {
+          "source": "bootstrap.console-output-channel",
+          "purpose": "console.data",
+          "operation": "move",
+          "rights": [
+            "wait",
+            "read"
+          ]
+        }
+      ],
+      "loader": "bootstrap"
+    },
+    {
+      "name": "session",
+      "image": "/svc/session",
+      "critical": true,
+      "restart": "never",
+      "after": [
+        "console-input",
+        "console-output"
+      ],
+      "capabilities": [
+        {
+          "source": "bootstrap.service-output-channel",
+          "purpose": "stdio.output",
+          "operation": "duplicate",
+          "rights": [
+            "wait",
+            "write",
+            "duplicate",
+            "transfer"
+          ]
+        },
+        {
+          "source": "bootstrap.service-output-channel",
+          "purpose": "stdio.error",
+          "operation": "duplicate",
+          "rights": [
+            "wait",
+            "write",
+            "duplicate",
+            "transfer"
+          ]
+        },
+        {
+          "source": "bootstrap.session-input-channel",
+          "purpose": "session.console-input",
+          "operation": "move",
+          "rights": [
+            "wait",
+            "read"
+          ]
+        },
+        {
+          "source": "bootstrap.session-output-channel",
+          "purpose": "session.console-output",
+          "operation": "move",
+          "rights": [
+            "wait",
+            "write"
+          ]
+        },
+        {
+          "source": "bootstrap.root-directory",
+          "purpose": "process.root-directory",
+          "operation": "duplicate",
+          "rights": [
+            "read",
+            "duplicate",
+            "transfer",
+            "execute",
+            "protect",
+            "write",
+            "inspect",
+            "set-attributes",
+            "lock-file"
+          ]
+        },
+        {
+          "source": "bootstrap.task-factory",
+          "purpose": "process.task-factory",
+          "operation": "duplicate",
+          "rights": [
+            "create-process",
+            "duplicate",
+            "transfer"
+          ]
+        },
+        {
+          "source": "bootstrap.task-group",
+          "purpose": "process.task-group",
+          "operation": "duplicate",
+          "rights": [
+            "attach-process",
+            "duplicate",
+            "transfer"
+          ]
+        },
+        {
+          "source": "bootstrap.resource-domain",
+          "purpose": "process.resource-domain",
+          "operation": "duplicate",
+          "rights": [
+            "sponsor",
+            "duplicate",
+            "transfer"
+          ]
+        },
+        {
+          "source": "bootstrap.task-inspector",
+          "purpose": "process.task-inspector",
+          "operation": "duplicate",
+          "rights": [
+            "duplicate",
+            "transfer",
+            "inspect"
+          ]
+        },
+        {
+          "source": "bootstrap.object-inspector",
+          "purpose": "process.object-inspector",
+          "operation": "duplicate",
+          "rights": [
+            "duplicate",
+            "transfer",
+            "inspect",
+            "inspect-details"
+          ]
+        },
+        {
+          "source": "bootstrap.memory-inspector",
+          "purpose": "process.memory-inspector",
+          "operation": "duplicate",
+          "rights": [
+            "duplicate",
+            "transfer",
+            "inspect"
+          ]
+        },
+        {
+          "source": "bootstrap.cpu-inspector",
+          "purpose": "process.cpu-inspector",
+          "operation": "duplicate",
+          "rights": [
+            "duplicate",
+            "transfer",
+            "inspect"
+          ]
+        },
+        {
+          "source": "bootstrap.dynamic-library-directory",
+          "purpose": "process.child-library-directory",
+          "operation": "duplicate",
+          "rights": [
+            "read",
+            "execute",
+            "protect",
+            "duplicate",
+            "transfer"
+          ]
+        },
+        {
+          "source": "bootstrap.vm-client-connection-channel",
+          "purpose": "vm.manager-connection",
+          "operation": "duplicate",
+          "rights": [
+            "wait",
+            "write",
+            "duplicate",
+            "transfer"
+          ]
+        },
+        {
+          "source": "bootstrap.child-loader",
+          "purpose": "process.child-loader",
+          "operation": "duplicate",
+          "rights": [
+            "read",
+            "execute",
+            "duplicate",
+            "transfer"
+          ]
+        },
+        {
+          "source": "bootstrap.environment-directory",
+          "purpose": "process.environment-directory",
+          "operation": "duplicate",
+          "rights": [
+            "read",
+            "inspect",
+            "execute",
+            "protect",
+            "duplicate",
+            "transfer"
+          ]
+        },
+        {
+          "source": "bootstrap.session-startup-channel",
+          "purpose": "session.startup-decision",
+          "operation": "move",
+          "rights": [
+            "wait",
+            "read"
+          ]
+        }
+      ],
+      "loader": "bootstrap"
+    },
+    {
+      "name": "vm-manager",
+      "image": "/svc/vm-manager",
+      "critical": true,
+      "restart": "never",
+      "after": [
+        "console-output"
+      ],
+      "capabilities": [
+        {
+          "source": "bootstrap.service-output-channel",
+          "purpose": "stdio.output",
+          "operation": "duplicate",
+          "rights": [
+            "wait",
+            "write",
+            "duplicate",
+            "transfer"
+          ]
+        },
+        {
+          "source": "bootstrap.service-output-channel",
+          "purpose": "stdio.error",
+          "operation": "duplicate",
+          "rights": [
+            "wait",
+            "write",
+            "duplicate",
+            "transfer"
+          ]
+        },
+        {
+          "source": "bootstrap.root-directory",
+          "purpose": "process.root-directory",
+          "operation": "duplicate",
+          "rights": [
+            "read",
+            "duplicate",
+            "transfer"
+          ]
+        },
+        {
+          "source": "bootstrap.vm-runtime-image",
+          "purpose": "vm.runtime-image",
+          "operation": "create",
+          "rights": [
+            "read",
+            "execute",
+            "protect",
+            "duplicate",
+            "transfer"
+          ]
+        },
+        {
+          "source": "bootstrap.vm-provisioning-channel",
+          "purpose": "vm.provisioning",
+          "operation": "move",
+          "rights": [
+            "wait",
+            "read"
+          ]
+        },
+        {
+          "source": "bootstrap.vm-manager-connection-channel",
+          "purpose": "vm.manager-connection",
+          "operation": "move",
+          "rights": [
+            "wait",
+            "read"
+          ]
+        },
+        {
+          "source": "bootstrap.task-factory",
+          "purpose": "process.task-factory",
+          "operation": "duplicate",
+          "rights": [
+            "create-process",
+            "create-task-group"
+          ]
+        },
+        {
+          "source": "bootstrap.resource-domain",
+          "purpose": "process.resource-domain",
+          "operation": "duplicate",
+          "rights": [
+            "create-resource-domain"
+          ]
+        },
+        {
+          "source": "bootstrap.vm-creation-authority",
+          "purpose": "vm.creation-authority",
+          "operation": "duplicate",
+          "rights": [
+            "derive",
+            "create-virtual-machine"
+          ]
+        },
+        {
+          "source": "bootstrap.dynamic-library-directory",
+          "purpose": "process.child-library-directory",
+          "operation": "duplicate",
+          "rights": [
+            "read",
+            "execute",
+            "protect",
+            "duplicate",
+            "transfer"
+          ]
+        },
+        {
+          "source": "bootstrap.child-loader",
+          "purpose": "process.child-loader",
+          "operation": "duplicate",
+          "rights": [
+            "read",
+            "execute",
+            "duplicate",
+            "transfer"
+          ]
+        }
+      ]
+    }
+  ]
+}

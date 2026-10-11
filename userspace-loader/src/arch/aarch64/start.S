@@ -1,0 +1,25 @@
+/* SPDX-FileCopyrightText: 2026 roolrz
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+.section .text._start, "ax", %progbits
+.p2align 2
+.global _start
+.type _start, %function
+_start:
+    mov x1, sp
+    sub sp, sp, #16, lsl #12
+    b __hyper_userspace_start
+.size _start, . - _start
+
+.global __hyper_userspace_enter
+.hidden __hyper_userspace_enter
+.type __hyper_userspace_enter, %function
+__hyper_userspace_enter:
+    mov sp, x0
+    mov x29, xzr
+    mov x30, xzr
+    br x1
+.size __hyper_userspace_enter, . - __hyper_userspace_enter
+
+.section .note.GNU-stack, "", %progbits

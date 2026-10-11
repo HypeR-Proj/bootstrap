@@ -1,0 +1,21 @@
+# SPDX-FileCopyrightText: 2026 roolrz
+# SPDX-License-Identifier: Apache-2.0
+[package]
+workspace = "../../../app"
+name = "hyper-mount"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+[[bin]]
+name = "hyper-mount"
+path = "src/main.rs"
+test = false
+bench = false
+[dependencies]
+hyper-os.workspace = true
+hyper-rt.workspace = true
+hyper-service.workspace = true
+[lints]
+workspace = true
