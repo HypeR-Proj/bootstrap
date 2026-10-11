@@ -59,13 +59,17 @@ impl Volume for Erofs {
     fn stat(&mut self, path: &str) -> Result<Entry, Error> {
         metadata(self.0.stat(path).map_err(map_error)?)
     }
-    fn entry(&mut self, path: &str, index: usize) -> Result<Option<Entry>, Error> {
+    fn read_directory(
+        &mut self,
+        path: &str,
+        cursor: protocol::DirectoryCursor,
+        output: &mut [u8],
+    ) -> Result<usize, Error> {
         self.0
-            .entry(path, index)
-            .map_err(map_error)?
-            .map(metadata)
-            .transpose()
+            .read_directory(path, cursor, output)
+            .map_err(map_error)
     }
+
     fn read(&mut self, path: &str, offset: u64, output: &mut [u8]) -> Result<usize, Error> {
         self.0.read(path, offset, output).map_err(map_error)
     }

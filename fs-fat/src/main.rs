@@ -89,10 +89,14 @@ impl Volume for Fat {
         self.0.stat(path).map(metadata).map_err(map_error)
     }
 
-    fn entry(&mut self, path: &str, index: usize) -> Result<Option<Entry>, Error> {
+    fn read_directory(
+        &mut self,
+        path: &str,
+        cursor: protocol::DirectoryCursor,
+        output: &mut [u8],
+    ) -> Result<usize, Error> {
         self.0
-            .entry(path, index)
-            .map(|v| v.map(metadata))
+            .read_directory(path, cursor, output)
             .map_err(map_error)
     }
 
