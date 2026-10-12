@@ -10,7 +10,7 @@
       "configuration": {
         "memory-bytes": 268435456,
         "vcpus": 8,
-        "bootargs": "console=ttyAMA0 earlycon=pl011,mmio32,0x09000000 rdinit=/init loglevel=7"
+        "bootargs": "console=ttyAMA0 earlycon rdinit=/init loglevel=7"
       }
     }
   ]
