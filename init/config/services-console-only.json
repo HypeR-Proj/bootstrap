@@ -4,11 +4,12 @@
   "format": "hyper.service-manifest",
   "services": [
     {
-      "name": "console-input",
-      "image": "/svc/console-input",
+      "name": "console-raw",
+      "image": "/svc/console-raw",
       "critical": true,
       "restart": "never",
       "after": [],
+      "loader": "bootstrap",
       "capabilities": [
         {
           "source": "bootstrap.console",
@@ -16,57 +17,37 @@
           "operation": "duplicate",
           "rights": [
             "wait",
+            "read",
+            "write"
+          ]
+        },
+        {
+          "source": "bootstrap.console-control-server",
+          "purpose": "console.control",
+          "operation": "move",
+          "rights": [
+            "wait",
             "read"
           ]
         },
         {
-          "source": "bootstrap.console-input-channel",
-          "purpose": "console.data",
-          "operation": "move",
-          "rights": [
-            "wait",
-            "write"
-          ]
-        }
-      ],
-      "loader": "bootstrap"
-    },
-    {
-      "name": "console-output",
-      "image": "/svc/console-output",
-      "critical": true,
-      "restart": "never",
-      "after": [],
-      "capabilities": [
-        {
-          "source": "bootstrap.console",
-          "purpose": "console.system",
-          "operation": "duplicate",
-          "rights": [
-            "wait",
-            "write"
-          ]
-        },
-        {
-          "source": "bootstrap.console-output-channel",
-          "purpose": "console.data",
+          "source": "bootstrap.console-log-server",
+          "purpose": "console.logs",
           "operation": "move",
           "rights": [
             "wait",
             "read"
           ]
         }
-      ],
-      "loader": "bootstrap"
+      ]
     },
     {
-      "name": "session",
-      "image": "/svc/session",
+      "name": "session-manager",
+      "image": "/svc/session-manager",
       "critical": true,
       "restart": "never",
       "after": [
-        "console-input",
-        "console-output"
+        "console-raw"
       ],
       "capabilities": [
         {
@@ -92,24 +73,6 @@
           ]
         },
         {
-          "source": "bootstrap.session-input-channel",
-          "purpose": "session.console-input",
-          "operation": "move",
-          "rights": [
-            "wait",
-            "read"
-          ]
-        },
-        {
-          "source": "bootstrap.session-output-channel",
-          "purpose": "session.console-output",
-          "operation": "move",
-          "rights": [
-            "wait",
-            "write"
-          ]
-        },
-        {
           "source": "bootstrap.root-directory",
           "purpose": "process.root-directory",
           "operation": "duplicate",
@@ -132,7 +95,8 @@
           "rights": [
             "create-process",
             "duplicate",
-            "transfer"
+            "transfer",
+            "create-task-group"
           ]
         },
         {
@@ -220,7 +184,7 @@
           ]
         },
         {
-          "source": "bootstrap.environment-directory",
+          "source": "bootstrap.boot-environment-directory",
           "purpose": "process.environment-directory",
           "rights": [
             "read",
@@ -233,16 +197,29 @@
           "operation": "duplicate"
         },
         {
-          "source": "bootstrap.session-startup-channel",
-          "purpose": "session.startup-decision",
-          "operation": "move",
+          "source": "bootstrap.console-controller",
+          "purpose": "session.console-controller",
+          "operation": "duplicate",
           "rights": [
             "wait",
-            "read"
+            "write",
+            "duplicate",
+            "transfer"
+          ]
+        },
+        {
+          "source": "bootstrap.console-log-connector",
+          "purpose": "session.log-connector",
+          "operation": "duplicate",
+          "rights": [
+            "wait",
+            "write",
+            "duplicate",
+            "transfer"
           ]
         }
       ],
-      "loader": "bootstrap"
+      "loader": "dynamic"
     }
   ]
 }

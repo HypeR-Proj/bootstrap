@@ -13,17 +13,17 @@ use hyper_os::Error as OsError;
 use hyper_os::capability_channel::CapabilityChannel;
 use hyper_os::fs::{Directory, DirectoryRights, File};
 use hyper_os::handle::{
-    ByteChannelObject, CapabilityChannelObject, CpuInspectorObject, MemoryInspectorObject,
-    ObjectInspectorObject, OwnedHandle, ResourceDomainObject, TaskFactoryObject, TaskGroupObject,
-    TaskInspectorObject,
+    CapabilityChannelObject, CpuInspectorObject, MemoryInspectorObject, ObjectInspectorObject,
+    OwnedHandle, ResourceDomainObject, TaskFactoryObject, TaskGroupObject, TaskInspectorObject,
 };
 use hyper_os::startup::{self, Startup};
+use hyper_service::stdio::{Inherited, StandardStream};
 use hyper_service::{filesystem, process, vm};
-use std::io::Write;
+use std::io::{Read, Write};
 use std::process::ExitCode;
 
-const INPUT_CHUNK_BYTES: usize = 256;
-const READY_MESSAGE: &[u8] = b"HypeR fallback shell: recovery console ready\n";
+const INPUT_CHUNK_BYTES: usize = 1;
+const READY_MESSAGE: &[u8] = b"HypeR fallback shell: recovery console ready\r\n";
 const PROMPT: &[u8] = b"fallback-sh$ ";
 const WORKING_DIRECTORY_RIGHTS: DirectoryRights = DirectoryRights::READ
     .union(DirectoryRights::WRITE)
@@ -44,11 +44,11 @@ fn application_main(mut startup: Startup<'_>) -> ExitCode {
 
 fn run(startup: &mut Startup<'_>) -> Result<ExitCode, Error> {
     hyper_os::require_core_abi().map_err(Error::from)?;
-    let input = hyper_rt::process::stdin().map_err(Error::from)?;
-    let output = hyper_rt::process::stdout().map_err(Error::from)?;
+    let input = inherited(StandardStream::Input)?;
+    let output = inherited(StandardStream::Output)?;
     // This interactive shell presents one terminal stream. Routing diagnostics
     // through a second session queue lets a prompt overtake pending stderr.
-    let error = output;
+    let error = &output;
     let root_directory = startup.take_root_directory().map_err(Error::from)?;
     let environment = Directory::from_handle(
         startup
@@ -110,10 +110,10 @@ fn run(startup: &mut Startup<'_>) -> Result<ExitCode, Error> {
     let mut editor = Editor::default();
     let mut input_chunk = [0_u8; INPUT_CHUNK_BYTES];
     loop {
-        let count = input
-            .as_byte_channel()
-            .receive(&mut input_chunk)
-            .map_err(Error::from)?;
+        let count = std::io::stdin().read(&mut input_chunk).map_err(Error::Io)?;
+        if count == 0 {
+            return Ok(ExitCode::SUCCESS);
+        }
         let bytes = input_chunk.get(..count).ok_or(Error::Protocol)?;
         for byte in bytes.iter().copied() {
             match editor.push(byte) {
@@ -130,20 +130,22 @@ fn run(startup: &mut Startup<'_>) -> Result<ExitCode, Error> {
                     write_terminal(editor.line())?;
                 }
                 Action::Submit(line) => {
-                    write_terminal(b"\n")?;
-                    match execute_line(&line, &mut authorities, input, output, error) {
+                    write_terminal(b"\r\n")?;
+                    match execute_line(&line, &mut authorities, &input, &output, error) {
                         Ok(CommandFlow::Continue) => (),
                         Ok(CommandFlow::Exit) => return Ok(ExitCode::SUCCESS),
-                        Err(error) => write_terminal(format!("fallback-sh: {error}\n").as_bytes())?,
+                        Err(error) => {
+                            write_terminal(format!("fallback-sh: {error}\r\n").as_bytes())?
+                        }
                     }
                     write_terminal(PROMPT)?;
                 }
                 Action::TooLong => {
-                    write_terminal(b"\nsh: command line is too long\n")?;
+                    write_terminal(b"\r\nsh: command line is too long\r\n")?;
                     write_terminal(PROMPT)?;
                 }
                 Action::Cancel => {
-                    write_terminal(b"^C\n")?;
+                    write_terminal(b"^C\r\n")?;
                     write_terminal(PROMPT)?;
                 }
                 Action::Exit => return Ok(ExitCode::SUCCESS),
@@ -155,14 +157,14 @@ fn run(startup: &mut Startup<'_>) -> Result<ExitCode, Error> {
 fn execute_line(
     bytes: &[u8],
     authorities: &mut CommandAuthorities,
-    input: &OwnedHandle<ByteChannelObject>,
-    output: &OwnedHandle<ByteChannelObject>,
-    error: &OwnedHandle<ByteChannelObject>,
+    input: &Inherited,
+    output: &Inherited,
+    error: &Inherited,
 ) -> Result<CommandFlow, Error> {
     let command = match CommandLine::parse(bytes) {
         Ok(command) => command,
         Err(_) => {
-            write_terminal(b"fallback-sh: invalid command syntax\n")?;
+            write_terminal(b"fallback-sh: invalid command syntax\r\n")?;
             return Ok(CommandFlow::Continue);
         }
     };
@@ -171,12 +173,12 @@ fn execute_line(
     };
     let arguments: Vec<_> = command.arguments().collect();
     match arguments.as_slice() {
-        ["help"] => write_terminal(b"Recovery shell: cd [DIRECTORY], pwd, help, exit\nRun mount/umount or an explicit executable path. Quoted arguments are supported; pipelines and redirection are not.\n")?,
+        ["help"] => write_terminal(b"Recovery shell: cd [DIRECTORY], pwd, help, exit\r\nRun mount/umount or an explicit executable path. Quoted arguments are supported; pipelines and redirection are not.\r\n")?,
         ["cd"] => builtin_cd("/", authorities)?,
         ["cd", target] => builtin_cd(target, authorities)?,
-        ["pwd"] => writeln!(std::io::stdout(), "{}", authorities.current_path.as_str().map_err(|_| Error::InvalidCommand)?).map_err(Error::Io)?,
+        ["pwd"] => write_terminal(format!("{}\r\n", authorities.current_path.as_str().map_err(|_| Error::InvalidCommand)?).as_bytes())?,
         ["exit"] => return Ok(CommandFlow::Exit),
-        _ if matches!(name, "cd" | "pwd" | "help" | "exit") => write_terminal(b"fallback-sh: invalid builtin arguments\n")?,
+        _ if matches!(name, "cd" | "pwd" | "help" | "exit") => write_terminal(b"fallback-sh: invalid builtin arguments\r\n")?,
         _ => launch_command(&command, bytes, authorities, input, output, error)?,
     }
     Ok(CommandFlow::Continue)
@@ -186,7 +188,7 @@ fn builtin_cd(target: &str, authorities: &mut CommandAuthorities) -> Result<(), 
     let path = match authorities.current_path.resolve(target) {
         Ok(path) => path,
         Err(_) => {
-            write_terminal(b"cd: invalid directory path\n")?;
+            write_terminal(b"cd: invalid directory path\r\n")?;
             return Ok(());
         }
     };
@@ -203,7 +205,7 @@ fn builtin_cd(target: &str, authorities: &mut CommandAuthorities) -> Result<(), 
     let directory = match directory {
         Ok(directory) => directory,
         Err(_) => {
-            write_terminal(b"cd: cannot open directory\n")?;
+            write_terminal(b"cd: cannot open directory\r\n")?;
             return Ok(());
         }
     };
@@ -272,4 +274,33 @@ fn main() -> ExitCode {
         Ok(startup) => application_main(startup),
         Err(_) => ExitCode::FAILURE,
     }
+}
+
+fn inherited(which: StandardStream) -> Result<Inherited, Error> {
+    let stream = match which {
+        StandardStream::Input => hyper_rt::process::stdin_stream()?,
+        StandardStream::Output => hyper_rt::process::stdout_stream()?,
+        StandardStream::Error => hyper_rt::process::stderr_stream()?,
+    };
+    if let Some(stream) = stream {
+        return Ok(Inherited::Stream(
+            stream.duplicate(hyper_os::stream::CONNECTOR_RIGHTS)?,
+        ));
+    }
+    let pipe = match which {
+        StandardStream::Input => hyper_rt::process::stdin()?,
+        StandardStream::Output => hyper_rt::process::stdout()?,
+        StandardStream::Error => hyper_rt::process::stderr()?,
+    };
+    Ok(Inherited::Pipe(
+        pipe.duplicate(
+            hyper_os::Rights::WAIT
+                .union(match which {
+                    StandardStream::Input => hyper_os::Rights::READ,
+                    _ => hyper_os::Rights::WRITE,
+                })
+                .union(hyper_os::Rights::DUPLICATE)
+                .union(hyper_os::Rights::TRANSFER),
+        )?,
+    ))
 }

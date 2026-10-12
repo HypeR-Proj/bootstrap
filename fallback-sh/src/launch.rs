@@ -14,6 +14,7 @@ use hyper_os::startup;
 use hyper_os::task::{ProcessBuilder, ProcessInfo, ProcessTermination};
 use hyper_os::wait::{ObjectSignals, WaitItem, wait_many};
 use hyper_os::{Error as OsError, Status};
+use hyper_service::stdio::{Inherited, StandardStream};
 use hyper_service::{filesystem, process, stdio, vm};
 
 fn prepare_command(
@@ -42,7 +43,7 @@ fn prepare_command(
             };
             write_terminal(
                 format!(
-                    "fallback-sh: {reason}: {name:?} (input: \"{}\"; {open_error:?})\n",
+                    "fallback-sh: {reason}: {name:?} (input: \"{}\"; {open_error:?})\r\n",
                     source.escape_ascii()
                 )
                 .as_bytes(),
@@ -176,37 +177,8 @@ fn prepare_command(
             ),
         )
         .map_err(|_| Error::InvalidCommand)?;
-    let ChildChannels {
-        input: child_input,
-        terminal_input,
-        output: child_output,
-        error: child_error,
-    } = child;
-    if terminal_input {
-        builder
-            .add_handle_duplicate(
-                child_input.as_handle_ref(),
-                stdio::TERMINAL_INPUT.as_raw(),
-                RightsOffer::Exact(stdio::TERMINAL_INPUT_CONTRACT.required_rights()),
-            )
-            .map_err(|_| Error::InvalidCommand)?;
-    }
-    add_child_channel(
-        &builder,
-        child_input,
-        stdio::STANDARD_INPUT.as_raw(),
-        Rights::WAIT.union(Rights::READ).union(if terminal_input {
-            Rights::INSPECT
-        } else {
-            Rights::NONE
-        }),
-    )?;
-    add_child_channel(
-        &builder,
-        child_output,
-        stdio::STANDARD_OUTPUT.as_raw(),
-        Rights::WAIT.union(Rights::WRITE),
-    )?;
+    child.input.add_to(&builder, StandardStream::Input)?;
+    child.output.add_to(&builder, StandardStream::Output)?;
     match program.authority {
         Some(Authority::Filesystem) => {
             if let Some(control) = authorities.filesystem_control.as_ref() {
@@ -300,12 +272,7 @@ fn prepare_command(
         }
         _ => {}
     }
-    add_child_channel(
-        &builder,
-        child_error,
-        stdio::STANDARD_ERROR.as_raw(),
-        Rights::WAIT.union(Rights::WRITE),
-    )?;
+    child.error.add_to(&builder, StandardStream::Error)?;
     builder.seal().map_err(Error::from)?;
     Ok(builder)
 }
@@ -316,21 +283,18 @@ pub(super) fn launch_command(
     command: &CommandLine,
     source: &[u8],
     authorities: &CommandAuthorities,
-    input: &OwnedHandle<ByteChannelObject>,
-    output: &OwnedHandle<ByteChannelObject>,
-    error: &OwnedHandle<ByteChannelObject>,
+    input: &Inherited,
+    output: &Inherited,
+    error: &Inherited,
 ) -> Result<(), Error> {
-    let input_rights = stdio::TERMINAL_INPUT_CONTRACT.allowed_rights();
-    let output_rights = stdio::STANDARD_OUTPUT_CONTRACT.allowed_rights();
     let builder = prepare_command(
         command,
         source,
         authorities,
         ChildChannels {
-            input: input.duplicate(input_rights)?,
-            terminal_input: hyper_rt::process::stdin_is_terminal(),
-            output: output.duplicate(output_rights)?,
-            error: error.duplicate(output_rights)?,
+            input: input.duplicate(StandardStream::Input)?,
+            output: output.duplicate(StandardStream::Output)?,
+            error: error.duplicate(StandardStream::Error)?,
         },
     )?;
     let child = builder
@@ -340,7 +304,7 @@ pub(super) fn launch_command(
         .as_process_supervisor()
         .wait_terminated(hyper_os::DEADLINE_INFINITE)?;
     if !process_succeeded(child.as_process_supervisor().info()?) {
-        write_terminal(b"fallback-sh: command failed\n")?;
+        write_terminal(b"fallback-sh: command failed\r\n")?;
     }
     Ok(())
 }
@@ -393,7 +357,6 @@ fn add_child_channel(
 ) -> Result<(), Error> {
     let rights = if [
         stdio::STANDARD_INPUT.as_raw(),
-        stdio::TERMINAL_INPUT.as_raw(),
         stdio::STANDARD_OUTPUT.as_raw(),
         stdio::STANDARD_ERROR.as_raw(),
     ]
@@ -420,8 +383,7 @@ fn process_succeeded(info: ProcessInfo) -> bool {
 }
 
 struct ChildChannels {
-    input: OwnedHandle<ByteChannelObject>,
-    terminal_input: bool,
-    output: OwnedHandle<ByteChannelObject>,
-    error: OwnedHandle<ByteChannelObject>,
+    input: Inherited,
+    output: Inherited,
+    error: Inherited,
 }

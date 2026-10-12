@@ -3,7 +3,7 @@
 
 # Init configuration
 
-`services-with-vms.json` includes the console workers, session manager,
+`services-with-vms.json` includes the raw Console service, formal session manager,
 VM manager and I/O runtime. Board packaging reads
 `boards/<board>.json` and generates the installed manifest, including storage
 readiness and broker endpoints. Edit the board configuration for VM definitions;
@@ -15,7 +15,7 @@ standalone I/O builds install a board snapshot at `/etc/hyper/board.json`, which
 io-runtime reads directly. Diskless bring-up derives an ordinary VM definition
 from the selected Pi 5 board for manual startup without device authority.
 
-`services-console-only.json` includes only the console workers and session
+`services-console-only.json` includes the raw Console service and formal session
 manager, used for early hardware bring-up and clock tests. These builds omit
 `vms.json`; an empty VM configuration file is not needed.
 
@@ -25,16 +25,19 @@ at `/etc/hyper/services.json`, and a system graph under `/system`.
 Test manifests live in `../tests/config/`. They may autostart test guests and are
 not the production board configuration.
 
-Init supervises the critical `session` virtual console manager, not the shell directly.
-The manager establishes its console but does not read input or start a shell
-until init sends `session.startup-decision`. That channel's sole writer follows
-supervisor ownership across handoff. Successful initialization selects
-`/system/bin/sh`. Only an explicit stage-1 failure decision before handoff
-selects the fixed boot environment's `svc/fallback-sh`. Session never infers
-recovery from a closed channel, a timeout or a failed formal shell. Shell exit
-restarts the selected client; failed launches retry with a bounded delay. Console transport failure remains a service
-failure. Each manager owns only its assigned console channels; the current
-bootstrap wires one physical console.
+The boot graph starts `console-raw`, a byte-only transport with independent log
+ingress. Stage-1 init launches and supervises `svc/fallback-sh` directly only
+when startup fails before handoff. The system graph starts `session-manager`,
+which launches `terminal-service` and the formal shell. No shared startup-decision
+channel selects between recovery and formal shells. After handoff, formal init
+owns errors; missing system tools cannot reactivate bootstrap recovery.
+
+The default manager reads optional `/system/etc/hyper/session.json`. Its relative
+`terminal` and `shell` image paths default to `svc/terminal-service` and `bin/sh`;
+`restart_limit` defaults to three rapid failures. It supervises a fresh session
+on restart and owns only its delegated raw-console control endpoint. Current
+board deployment selects one physical Console. See
+[Native terminals](../../../../docs/terminal.md).
 
 ## Stage-1 and the system environment
 
@@ -81,8 +84,7 @@ the namespace, retaining the old root at `/boot` and moving the listed mounts.
 Core configuration is then reachable at `/boot/etc/hyper/`. The formal root
 has no compatibility aliases; services read boot resources through their fixed
 `process.environment-directory`, separately from the live namespace root. A root-switch failure leaves the old namespace intact; system init keeps
-the transferred core supervisors and formal shell but does not launch formal
-services. Supervisor transfer and root replacement are distinct commit points.
+the transferred core supervisors and handles recovery in the formal environment. Supervisor transfer and root replacement are distinct commit points.
 
 Choosing ramfs preserves this graph, handoff and root switch; the `/system`
 entry instead sets `ramfs: true` to promote and detach the resident subtree atomically without copying it.
@@ -96,8 +98,8 @@ configuration performs the supervision handoff without replacing the root.
 `/boot/etc/fstab` is the retained bootstrap mount policy, containing only `/system`
 by default. After handoff and root switching, formal init requests the mounts in
 `/system/etc/fstab`, including `/data`. `/boot/etc/hyper/filesystem.json` configures
-only filesystem-worker search directories. The default FAT worker lives in
-`/system/svc`; bootstrap contains only the EROFS worker needed to reach it. Partition selections come from the
+only filesystem-worker search directories. The default FAT and EROFS workers live in boot RAM; worker search can also
+resolve implementations installed under `/system/svc`. Partition selections come from the
 board's generated boot-environment `etc/hyper/storage.json`; HypeR resolves
 PARTUUID/PARTLABEL from GPT before authorizing Linux block ranges; implementations are selected
 by media magic and loaded as separate workers. The default deployment mounts

@@ -12,8 +12,7 @@ implementations and the formal executable loader remain in `lib/`.
 | --- | --- |
 | `init` | Start core services and transfer their supervision to system init |
 | `userspace-loader` | Load initial and core static ELF images under the minimal kernel entry contract |
-| `console-input`, `console-output` | Physical console input and output transport |
-| `session` | Own the console; wait for init and supervise the selected formal/recovery shell |
+| `console-raw` | Byte-only physical Console transport and independent service log mirroring |
 | `fallback-sh` | Static recovery shell without clap, history or pipelines |
 | `io-runtime` | Start the I/O VM and establish authorized Native block clients |
 | `fs-backend` | Apply fstab, identify media and supervise filesystem workers |
@@ -22,9 +21,10 @@ implementations and the formal executable loader remain in `lib/`.
 
 The required filesystem workers depend on the deployment. For example, an
 EROFS system volume needs `fs-erofs` before `/system` is mounted; `fs-fat` can
-instead be loaded from `/system` when FAT is only used for later data mounts,
-and this is the default. Stage-1 applies the RAM root's `/etc/fstab` only; formal
-init applies `/system/etc/fstab` after taking supervision and switching roots.
+instead be loaded from `/system` when FAT is only used for later data mounts.
+The default image keeps both workers in boot RAM. Stage-1 applies the RAM root's
+`/etc/fstab` only; formal init applies `/system/etc/fstab` after taking supervision
+and switching roots, regardless of the FAT worker's placement.
 Source placement does not force every worker into every RAM image. Missing
 workers produce a runtime mount error.
 
@@ -54,11 +54,11 @@ dependencies. Direct `hyper-cargo build` calls must set `HYPER_LINK_MODE=static`
 
 `make app` builds stage-1 programs separately from the dynamic application
 and library graph. `make app-boot` selects only `APP_BOOT_COMPONENTS` in that
-static build tree. The console input/output workers use `no_std` and the small
-Native Rust entry runtime; other Rust bootstrap services retain std. A component
-selects this with the optional sixth `native-rust-app` argument `core` (default
-`std`). Build and check use separate Cargo invocations and target outputs so
-std features cannot leak into the `no_std` workers. The bootstrap loader is
+static build tree. The raw Console service uses statically linked std for bounded
+admission workers, without a terminal library or line discipline. Components can
+select a freestanding runtime with the optional sixth `native-rust-app` argument
+`core` (default `std`); separate Cargo outputs prevent feature unification across
+those runtime graphs. The bootstrap loader is
 packaged from the SDK. Composition initially installs them at the RAM root; system init
 later moves that filesystem to `/boot` during `switch_root`. Ordinary applications
 and shared libraries remain under `/system`. See [boot layout](../../docs/boot-layout.md) for

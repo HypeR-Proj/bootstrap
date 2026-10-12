@@ -4,8 +4,8 @@
 [workspace]
 resolver = "3"
 members = [
-    "console-input", "console-output", "fallback-sh", "fs-backend",
-    "fs-erofs", "fs-fat", "init", "io-runtime", "mount", "session", "umount",
+    "console-raw", "fallback-sh", "fs-backend",
+    "fs-erofs", "fs-fat", "init", "io-runtime", "mount", "umount",
     "lib/*",
 ]
 exclude = [".cargo", "target", "userspace-loader"]

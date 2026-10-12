@@ -75,16 +75,7 @@ name = "hyper-abi"
 version = "0.0.0"
 
 [[package]]
-name = "hyper-console-input"
-version = "0.0.0"
-dependencies = [
- "bootstrap-service",
- "hyper-os",
- "hyper-rt",
-]
-
-[[package]]
-name = "hyper-console-output"
+name = "hyper-console-raw"
 version = "0.0.0"
 dependencies = [
  "bootstrap-service",
@@ -188,15 +179,6 @@ dependencies = [
  "hyper-abi",
  "hyper-os",
  "hyper-sys",
-]
-
-[[package]]
-name = "hyper-session-service"
-version = "0.0.0"
-dependencies = [
- "bootstrap-service",
- "hyper-os",
- "hyper-rt",
 ]
 
 [[package]]
