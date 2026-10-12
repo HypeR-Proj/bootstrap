@@ -19,7 +19,7 @@ add_executable(hyper_userspace_loader
     src/arch/${HYPER_ARCH}/start.S
     src/start.c
 )
-include(${CMAKE_CURRENT_SOURCE_DIR}/../../../lib/elf-loader/CMakeLists.txt)
+include(${CMAKE_CURRENT_SOURCE_DIR}/elf/CMakeLists.txt)
 hyper_add_elf_loader(hyper_userspace_loader)
 target_compile_features(hyper_userspace_loader PRIVATE c_std_17)
 target_compile_options(hyper_userspace_loader PRIVATE

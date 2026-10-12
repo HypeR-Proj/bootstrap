@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 roolrz
 // SPDX-License-Identifier: Apache-2.0
 
-use hyper_filesystem::driver::Format;
+use crate::format::Format;
 use hyper_os::{Error, Status};
 
 use crate::config::{Config, WorkerDirectory};
@@ -66,7 +66,7 @@ pub fn open<T>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use hyper_filesystem::driver::{PROBE_BYTES, identify};
+    use crate::format::{PROBE_BYTES, identify};
 
     fn split_config() -> Config {
         Config {

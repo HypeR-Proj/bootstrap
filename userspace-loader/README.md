@@ -13,8 +13,7 @@ loader File capability. The kernel does not select a loader for their children.
 
 The stage-1 loader starts static core services and rejects `PT_INTERP` before
 mapping any application segment. It has no allocator, dependencies, TLS, symbol
-lookup, relocation, constructors or service process. Both loaders statically
-include the internal [ELF loader primitives](../../../lib/elf-loader/README.md).
+lookup, relocation, constructors or service process. It owns its internal [ELF loader primitives](elf/README.md).
 The [formal-environment loader](../../../lib/dynamic-loader/README.md) loads
 both static and dynamic applications outside stage-1.
 

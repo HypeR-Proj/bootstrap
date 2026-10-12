@@ -55,9 +55,6 @@ fn one_node_supplies_image_identity_runtime_policy_and_device() {
     );
     assert_eq!(definition.configuration.affinity[0].vcpu, 0);
     assert_eq!(definition.configuration.affinity[0].cpus, vec![1, 3]);
-    assert!(!definition.autostart);
-    assert!(definition.disk.is_none());
-    assert!(definition.network.is_none());
     assert!(config.network_device().is_none());
     assert_eq!(config.device().profile(), Profile::VirtioMmioScsi);
     assert!(matches!(

@@ -9,7 +9,12 @@ mod storage;
 #[path = "../../tests/fixtures/physical_retirement.rs"]
 mod physical_retirement;
 
+use hyper_io_runtime::guest::install::PhysicalAssignment;
+use hyper_io_runtime::guest::install::{
+    self, Image, InstalledGuest, PHYSICAL_MMIO, RAM_BASE, RAM_BYTES,
+};
 use hyper_io_runtime::guest_log::GuestLog;
+use hyper_io_runtime::protocol::control::{Command, MAX_RECORD, Reply, Request, Status};
 use hyper_os::guest_io::Mailbox;
 use hyper_os::handle::{ByteChannelObject, GuestMailboxObject, OwnedHandle, VirtualMachineObject};
 use hyper_os::startup::{self, Startup};
@@ -19,9 +24,6 @@ use hyper_vm_image::guest_fdt::{
     GuestHardwareMetadata,
     io::{DmaRange, IoDevices, MmioDevice, MmioWindow, SdhciDevice, SdhciRevision},
 };
-use hyper_vm_support::io_guest::PhysicalAssignment;
-use hyper_vm_support::io_guest::{self, Image, InstalledGuest, PHYSICAL_MMIO, RAM_BASE, RAM_BYTES};
-use hyper_vm_support::io_protocol::{Command, MAX_RECORD, Reply, Request, Status};
 use physical_network::PhysicalNetwork;
 use std::io;
 use std::process::ExitCode;
@@ -146,7 +148,7 @@ fn run(
     .map_err(show)?;
     let platform = vm::platform_info(lease.as_handle_ref(), vm::PlatformProfile::Aarch64Reference)
         .map_err(show)?;
-    let metadata = hyper_vm_support::profile::validate_metadata(
+    let metadata = hyper_io_runtime::guest::profile::validate_metadata(
         image.plan.architecture(),
         image.plan.platform_profile(),
         platform,
@@ -254,7 +256,7 @@ fn run(
     if let Some(assignment) = network.assignment() {
         assignments.push(assignment);
     }
-    let mut guest = io_guest::install_mapped(
+    let mut guest = install::install_mapped(
         startup,
         &image,
         &grant,
@@ -383,7 +385,7 @@ struct StorageBootstrap<'a> {
 /// Negotiates the backend, publishes storage readiness, and services its clients.
 ///
 /// With Native storage configured, consume the readiness endpoint only after
-/// mounting the configured volume and sending the ready record. Until then the outer owner
+/// completing bootstrap mounts and sending the ready record. Until then the outer owner
 /// retains it through failure cleanup. Broker progress shares this loop with
 /// guest console and power events instead of blocking on individual clients.
 fn supervise(
@@ -411,9 +413,9 @@ fn supervise(
     let mut record = [0; MAX_RECORD];
     let management = filesystem
         .as_ref()
-        .map(|_| hyper_vm_support::block_protocol::Request {
+        .map(|_| hyper_io_runtime::protocol::block::Request {
             transaction: 1,
-            command: hyper_vm_support::block_protocol::Command::Hello,
+            command: hyper_io_runtime::protocol::block::Command::Hello,
         });
     let length = match management {
         Some(request) => request.encode(&mut record).map_err(show)?,
@@ -430,7 +432,7 @@ fn supervise(
             match mailbox.receive(&mut record) {
                 Ok(length) => {
                     let max_read = if let Some(request) = management {
-                        let hyper_vm_support::block_protocol::Reply::Hello { max_read } =
+                        let hyper_io_runtime::protocol::block::Reply::Hello { max_read } =
                             request.decode_reply(&record[..length]).map_err(show)?
                         else {
                             return Err("management HELLO omitted block capabilities".into());
@@ -468,10 +470,10 @@ fn supervise(
                         }
                         drop(readiness.take());
                         if mounted {
-                            println!("HypeR io-runtime: ready; Native volumes mounted");
+                            println!("HypeR io-runtime: ready; bootstrap mounts complete");
                         } else {
                             eprintln!(
-                                "HypeR io-runtime: required mount unavailable; backend remains active"
+                                "HypeR io-runtime: required bootstrap mount unavailable; backend remains active"
                             );
                         }
                     } else {

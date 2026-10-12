@@ -22,16 +22,29 @@ implementations and the formal executable loader remain in `lib/`.
 
 The required filesystem workers depend on the deployment. For example, an
 EROFS system volume needs `fs-erofs` before `/system` is mounted; `fs-fat` can
-instead be loaded from `/system` when FAT is only used for later data mounts.
+instead be loaded from `/system` when FAT is only used for later data mounts,
+and this is the default. Stage-1 applies the RAM root's `/etc/fstab` only; formal
+init applies `/system/etc/fstab` after taking supervision and switching roots.
 Source placement does not force every worker into every RAM image. Missing
 workers produce a runtime mount error.
 
-Rust components own their `Cargo.toml` and `component.mk`. These packages belong
-to the existing [`app/Cargo.toml`](../../app/Cargo.toml) delivery workspace and
-share its SDK dependencies and lockfile. `make app-check` and `make app-test`
-include them; no second dependency workspace is needed. The small C bootstrap
-loader is built by SDK assembly using CMake and shares bounded ELF mapping and
-stack construction code with the formal loader in `lib/elf-loader`.
+Rust components own their `Cargo.toml` and `component.mk`. They belong to the
+independent [`Cargo.toml`](Cargo.toml) workspace here, with its own lockfile.
+Private service contracts, supervision, image-format and filesystem libraries
+live in `lib/` below this workspace. They use distinct `bootstrap-*` package
+identities and never link formal-system libraries from the repository's top-level
+`lib/`. The resident I/O VM's configuration, image loading and backend wire
+protocols belong to `io-runtime`; bootstrap does not carry the formal VM fleet
+policy or guest virtio frontend state machines.
+`make app-check`, `make app-test` and `make app-sdk-test` cover both workspaces.
+For a targeted bootstrap test, set `APP_TEST_WORKSPACE=bootstrap/stage1` and
+`APP_TEST_PACKAGE`, for example `bootstrap-fatfs`.
+
+Only [the Native substrate](../../stdlib/README.md), Rust std, and third-party
+Cargo dependencies are shared with the formal system. Services communicate via
+the same capability and wire contracts; source ownership does not add IPC or a
+second running service. The small C loader is built by SDK assembly using
+CMake and owns its ELF mapper and stack encoder in `userspace-loader/elf/`.
 
 Every program under `bootstrap/stage1/` must link statically, regardless of
 its deployment profile or whether it is installed in `/boot` or `/system`.

@@ -79,11 +79,11 @@ pub fn parse(bytes: &str) -> Result<Vec<Client>, &'static str> {
 /// The Native connection owner supplies identity and notification epoch; a
 /// runtime can request device operations but cannot choose a new DMA session.
 pub fn authorize_request(
-    request: hyper_vm_support::io_protocol::Request,
+    request: crate::protocol::control::Request,
     identity: u64,
     epoch: u32,
 ) -> bool {
-    use hyper_vm_support::io_protocol::Command;
+    use crate::protocol::control::Command;
     request.binding == identity
         && request.epoch == epoch
         && matches!(

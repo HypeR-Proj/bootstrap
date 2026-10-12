@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 roolrz
 # SPDX-License-Identifier: Apache-2.0
 [package]
-workspace = "../../../app"
+workspace = ".."
 name = "hyper-umount"
 version.workspace = true
 edition.workspace = true
@@ -14,7 +14,6 @@ path = "src/main.rs"
 test = false
 bench = false
 [dependencies]
-hyper-os.workspace = true
 hyper-rt.workspace = true
 hyper-service.workspace = true
 [lints]

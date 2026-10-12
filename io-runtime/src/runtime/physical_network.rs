@@ -4,15 +4,15 @@
 //! Claimed network hardware and the firmware borrowed by the I/O guest image.
 
 use super::{Result, show};
+use hyper_io_runtime::guest::install::{
+    PHYSICAL_NET_IRQ, PHYSICAL_NET_MMIO, PHYSICAL_PCI_IRQ, PHYSICAL_PCI_MMIO, PhysicalAssignment,
+};
 use hyper_io_runtime::{device_policy::Policy, pci, rp1};
 use hyper_os::device;
 use hyper_os::handle::{
     DeviceAssignmentAuthorityObject, HandleRef, OwnedHandle, PhysicalDeviceObject,
 };
 use hyper_vm_image::guest_fdt::io::{MmioDevice, PciHost};
-use hyper_vm_support::io_guest::{
-    PHYSICAL_NET_IRQ, PHYSICAL_NET_MMIO, PHYSICAL_PCI_IRQ, PHYSICAL_PCI_MMIO, PhysicalAssignment,
-};
 
 pub(super) enum PhysicalNetwork {
     Absent,

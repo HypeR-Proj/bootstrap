@@ -4,7 +4,7 @@
 //! The resident I/O VM and its device come from one bounded board snapshot.
 
 use crate::device_policy::Policy;
-use hyper_vm_policy::fleet::{Configuration, Definition};
+use crate::guest::{Configuration, Definition};
 use serde::Deserialize;
 use std::io::Read;
 
@@ -148,9 +148,6 @@ impl Config {
             name,
             image,
             configuration,
-            autostart: false,
-            disk: None,
-            network: None,
         };
         definition.validate()?;
         // The backend must boot before /data exists. Its image is packaged in

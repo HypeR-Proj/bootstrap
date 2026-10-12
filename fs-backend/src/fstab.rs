@@ -3,7 +3,7 @@
 
 //! Bounded fstab policy, independent of installed filesystem implementations.
 
-use hyper_filesystem::driver::Format;
+use crate::format::Format;
 #[cfg(target_os = "hyper")]
 use std::io::Read;
 
@@ -47,10 +47,10 @@ pub fn options(value: &str) -> Result<(bool, bool, bool), String> {
 }
 
 #[cfg(target_os = "hyper")]
-pub fn load(environment: &hyper_os::fs::Directory) -> Result<Vec<Entry>, String> {
-    let file = environment
-        .open(PATH, hyper_os::fs::FileRights::READ)
-        .map_err(|error| format!("open {PATH}: {error}"))?
+pub fn load(directory: &hyper_os::fs::Directory, path: &str) -> Result<Vec<Entry>, String> {
+    let file = directory
+        .open(path, hyper_os::fs::FileRights::READ)
+        .map_err(|error| format!("open {path}: {error}"))?
         .into_std();
     let mut data = Vec::new();
     file.take(MAX_BYTES as u64 + 1)

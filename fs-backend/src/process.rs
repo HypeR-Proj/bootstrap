@@ -4,9 +4,9 @@
 //! Worker ownership transactions. Publication belongs to the manager, and a
 //! clean return transfers the original `NativeBlock` only after namespace detach.
 
+use crate::format::Format;
 use crate::{deadline, filesystem_error, show};
 use core::mem::MaybeUninit;
-use hyper_filesystem::driver::Format;
 use hyper_fs_backend::fstab::Entry;
 use hyper_fs_backend::worker::{Program, Source};
 use hyper_os::{

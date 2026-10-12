@@ -5,7 +5,10 @@
 //! Userspace establishes them once; file I/O never traverses this supervisor.
 
 use super::{Result, check_deadline, deadline, pump_guest, show};
+use hyper_io_runtime::guest::install::{InstalledGuest, RAM_BASE, RAM_BYTES, SharedGrant};
 use hyper_io_runtime::guest_log::GuestLog;
+use hyper_io_runtime::protocol::control::{Command, MAX_RECORD, Reply, Request, Status};
+use hyper_io_runtime::protocol::{BackendOperation, QUEUES, Queue, VERSION_1};
 use hyper_io_runtime::storage_policy::Volume;
 use hyper_os::block::{self, NativeBlock};
 use hyper_os::capability_channel::CapabilityChannel;
@@ -19,9 +22,6 @@ use hyper_os::memory::{SharedReadMapping, WritableVmo};
 use hyper_os::vm;
 use hyper_os::wait::{self, ObjectSignals, WaitItem};
 use hyper_vm_image::guest_fdt::io::{DmaRange, IoClient, MmioDevice, SharedMemory};
-use hyper_vm_support::io_guest::{InstalledGuest, RAM_BASE, RAM_BYTES, SharedGrant};
-use hyper_vm_support::io_protocol::{Command, MAX_RECORD, Reply, Request, Status};
-use hyper_vm_support::virtio_mmio::{BackendOperation, QUEUES, Queue, VERSION_1};
 
 const _: () = assert!(QUEUES == block::QUEUE_COUNT);
 
@@ -190,7 +190,7 @@ impl NativeStorage {
     }
 }
 
-/// Attach all already-negotiated volumes before publishing aggregate mount
+/// Attach all already-negotiated volumes before publishing bootstrap mount
 /// readiness. Keep pumping the I/O VM while the filesystem manager starts its
 /// independent workers; scope exit joins before any DMA grant can be dropped.
 pub(super) fn mount_volumes(

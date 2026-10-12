@@ -7,6 +7,8 @@
 mod manager;
 mod process;
 
+use hyper_fs_backend::format;
+
 use core::mem::MaybeUninit;
 use hyper_os::{
     block::NativeBlock,
@@ -106,9 +108,9 @@ fn run() -> Result<(), String> {
         environment,
         volumes,
     };
-    let readiness = manager.mount_all();
+    let readiness = manager.mount_boot();
     if let Err(error) = &readiness {
-        eprintln!("HypeR fs-backend: initial mounts: {error}");
+        eprintln!("HypeR fs-backend: bootstrap mounts: {error}");
     }
     if let Err(error) = ready.as_byte_channel().send(if readiness.is_ok() {
         filesystem::READY_MESSAGE

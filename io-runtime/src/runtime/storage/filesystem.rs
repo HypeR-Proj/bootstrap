@@ -59,7 +59,7 @@ pub(super) fn attach(
     hyper_service::io::send_capabilities(&provider, filesystem::FINISH_MESSAGE, &mut [], limit)
         .map_err(show)?;
     // All moves have committed. The manager owns the block capabilities, and
-    // reports aggregate fstab readiness over the one dedicated result pipe.
+    // reports bootstrap fstab readiness over the one dedicated result pipe.
     let mut response = [0_u8; 32];
     loop {
         match receiver.as_byte_channel().try_receive(&mut response) {

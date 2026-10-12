@@ -5,11 +5,11 @@
 
 use super::*;
 use hyper_block::gpt;
+use hyper_io_runtime::protocol::block::{self as block_protocol, Command, Disk, Reply};
 use hyper_io_runtime::storage_policy::{
     Policy,
     catalog::{Catalog, Resolution},
 };
-use hyper_vm_support::block_protocol::{self, Command, Disk, Reply};
 use std::time::Duration;
 
 struct Controller<'a> {

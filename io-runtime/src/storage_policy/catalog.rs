@@ -4,8 +4,8 @@
 //! Resolve on-disk identities before publishing any backend assignment.
 
 use super::{Policy, Volume};
+use crate::protocol::block::Disk;
 use hyper_block::{Selector, gpt};
-use hyper_vm_support::block_protocol::Disk;
 
 const MAX_PARTITIONS: usize = 4096;
 

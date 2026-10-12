@@ -139,7 +139,7 @@ fn dynamic_dma_translation_excludes_both_static_aliases() {
 
 #[test]
 fn runtime_cannot_advance_the_backend_epoch_or_change_mapping_identity() {
-    use hyper_vm_support::io_protocol::{Command, Request};
+    use crate::protocol::control::{Command, Request};
     let request = Request {
         binding: 2,
         epoch: 3,
@@ -149,8 +149,8 @@ fn runtime_cannot_advance_the_backend_epoch_or_change_mapping_identity() {
     for command in [
         Command::Hello,
         Command::NetworkHello,
-        Command::Device(hyper_vm_support::virtio_mmio::BackendOperation::Reset),
-        Command::NetworkDevice(hyper_vm_support::virtio_mmio::BackendOperation::Reset),
+        Command::Device(crate::protocol::BackendOperation::Reset),
+        Command::NetworkDevice(crate::protocol::BackendOperation::Reset),
     ] {
         assert!(authorize_request(Request { command, ..request }, 2, 3));
         assert!(!authorize_request(Request { command, ..request }, 2, 4));

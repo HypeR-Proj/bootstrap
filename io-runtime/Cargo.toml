@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 [package]
-workspace = "../../../app"
+workspace = ".."
 name = "hyper-io-runtime"
 version.workspace = true
 edition.workspace = true
@@ -39,8 +39,6 @@ hyper-os = { workspace = true, features = ["std"] }
 hyper-rt.workspace = true
 hyper-service.workspace = true
 hyper-vm-image.workspace = true
-hyper-vm-policy.workspace = true
-hyper-vm-support.workspace = true
 
 [lints]
 workspace = true

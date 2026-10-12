@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 [package]
-workspace = "../../../app"
+workspace = ".."
 name = "hyper-init"
 version.workspace = true
 edition.workspace = true
@@ -18,7 +18,7 @@ bench = false
 
 [dependencies]
 hyper-rt.workspace = true
-hyper-service-manager = { workspace = true, default-features = false }
+hyper-service-manager.workspace = true
 
 [lints]
 workspace = true

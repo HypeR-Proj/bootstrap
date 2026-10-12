@@ -6,4 +6,5 @@
 pub mod config;
 pub mod worker;
 
+pub mod format;
 pub mod fstab;

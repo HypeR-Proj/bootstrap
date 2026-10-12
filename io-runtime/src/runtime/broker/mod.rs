@@ -10,6 +10,7 @@ use client::session_closed;
 
 use super::{Result, check_deadline, deadline, show};
 use hyper_io_runtime::broker_exchange::Pending;
+use hyper_io_runtime::guest::install::InstalledGuest;
 use hyper_os::capability_channel::CapabilityChannel;
 use hyper_os::guest_io::{Mailbox, Notification};
 use hyper_os::handle::{
@@ -20,7 +21,6 @@ use hyper_os::vm;
 use hyper_os::wait::{ObjectSignals, WaitItem};
 use hyper_service::io;
 use hyper_vm_image::guest_fdt::io::{DmaRange, IoClient, MmioDevice, SharedMemory};
-use hyper_vm_support::io_guest::InstalledGuest;
 use std::io::Read;
 use std::num::NonZeroU64;
 
@@ -355,7 +355,7 @@ impl Broker {
             guest.name(),
             guest.image(),
             info,
-            hyper_vm_support::io_guest::RAM_BYTES,
+            hyper_io_runtime::guest::install::RAM_BYTES,
             boot_host_cpu,
         )
         .ok_or(hyper_os::Error::InvalidResponse)

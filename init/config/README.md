@@ -29,10 +29,10 @@ Init supervises the critical `session` virtual console manager, not the shell di
 The manager establishes its console but does not read input or start a shell
 until init sends `session.startup-decision`. That channel's sole writer follows
 supervisor ownership across handoff. Successful initialization selects
-`/system/bin/sh`; failure selects the fixed boot environment's `svc/fallback-sh`.
-A missing/failed formal shell, closed decision channel or 180-second decision
-timeout also enters recovery. Clean shell exit restarts the selected client;
-rapid failures are rate-limited. Console transport failure remains a service
+`/system/bin/sh`. Only an explicit stage-1 failure decision before handoff
+selects the fixed boot environment's `svc/fallback-sh`. Session never infers
+recovery from a closed channel, a timeout or a failed formal shell. Shell exit
+restarts the selected client; failed launches retry with a bounded delay. Console transport failure remains a service
 failure. Each manager owns only its assigned console channels; the current
 bootstrap wires one physical console.
 
@@ -40,20 +40,20 @@ bootstrap wires one physical console.
 
 The RAM archive initially contains core services and configuration directly
 under `/`; there is no prepacked `/boot` wrapper. The system graph lives at
-`/system/etc/hyper/services.json`. `/etc/hyper/init.json` selects system init
-and its root-switch policy. The default split deployment generates:
+`/system/etc/hyper/services.json`. `/etc/hyper/init.json` selects only the
+successor executable: `{"system-init": "/system/svc/init-system"}`. The
+successor reads its own `/system/etc/hyper/init.json`; the default split
+deployment generates:
 
 ```json
 {
-  "system-init": "/system/svc/init-system",
   "services": "/system/etc/hyper/services.json",
   "root-switch": {
     "new-root": "/.newroot",
     "put-old": "/boot",
-    "directories": ["/tmp"],
+    "directories": ["/tmp", "/data"],
     "mounts": [
-      {"source": "/system", "target": "/system", "ramfs": false},
-      {"source": "/data", "target": "/data", "optional": true}
+      {"source": "/system", "target": "/system", "ramfs": false}
     ]
   }
 }
@@ -74,26 +74,30 @@ ownership. One successful capability rendezvous transfers all live core
 supervisors; only then does boot init exit. An unavailable system image or its
 library directory, invalid configuration or failed pre-commit transfer leaves
 recovery supervised by boot init. An unrelated `/data` failure does not prevent
-handoff when `/system` is available, including diskless ramfs deployment, but
-the failure follows the handoff and selects the recovery shell.
+handoff when `/system` is available, including diskless ramfs deployment.
+After ownership commits, formal init handles failures and uses the formal shell.
 After adoption, system init prepares a fresh ramfs root and atomically switches
 the namespace, retaining the old root at `/boot` and moving the listed mounts.
 Core configuration is then reachable at `/boot/etc/hyper/`. The formal root
 has no compatibility aliases; services read boot resources through their fixed
 `process.environment-directory`, separately from the live namespace root. A root-switch failure leaves the old namespace intact; system init keeps
-the transferred core supervisors and recovery shell but does not launch formal
+the transferred core supervisors and formal shell but does not launch formal
 services. Supervisor transfer and root replacement are distinct commit points.
 
 Choosing ramfs preserves this graph, handoff and root switch; the `/system`
 entry instead sets `ramfs: true` to promote and detach the resident subtree atomically without copying it.
-Additional fstab mountpoints are included as optional moves. Nested disk mounts
+Additional bootstrap fstab mountpoints are included as optional moves. Formal
+mountpoints are created later and do not constrain the root-switch plan. Nested disk mounts
 follow a moved ancestor; mounted children under a RAM subtree transfer are
 rejected. Ordinary services and the shell do not receive `MANAGE_NAMESPACE`.
 This policy belongs to userspace: omitting `root-switch` from a custom init
 configuration performs the supervision handoff without replacing the root.
 
-`/boot/etc/fstab` is the retained mount policy, and `/boot/etc/hyper/filesystem.json` configures
-only filesystem-worker search directories. Partition selections come from the
+`/boot/etc/fstab` is the retained bootstrap mount policy, containing only `/system`
+by default. After handoff and root switching, formal init requests the mounts in
+`/system/etc/fstab`, including `/data`. `/boot/etc/hyper/filesystem.json` configures
+only filesystem-worker search directories. The default FAT worker lives in
+`/system/svc`; bootstrap contains only the EROFS worker needed to reach it. Partition selections come from the
 board's generated boot-environment `etc/hyper/storage.json`; HypeR resolves
 PARTUUID/PARTLABEL from GPT before authorizing Linux block ranges; implementations are selected
 by media magic and loaded as separate workers. The default deployment mounts

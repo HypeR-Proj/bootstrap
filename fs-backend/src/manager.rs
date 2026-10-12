@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2026 roolrz
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::format::{self as driver, Format, PROBE_BYTES};
 use crate::{filesystem_error, process::Worker, show};
-use hyper_filesystem::driver::{self, Format, PROBE_BYTES};
 use hyper_fs_backend::{
     config::Config,
     fstab::{self, Entry},
@@ -49,8 +49,21 @@ pub(super) struct Manager<'a> {
     pub volumes: Vec<Volume>,
 }
 impl Manager<'_> {
-    pub fn mount_all(&mut self) -> Result<String, String> {
-        let entries = fstab::load(&self.environment)?;
+    /// The boot environment stays pinned across `switch_root`; later requests
+    /// select a table explicitly in the live namespace.
+    pub fn mount_boot(&mut self) -> Result<String, String> {
+        let entries = fstab::load(&self.environment, fstab::PATH)?;
+        self.mount_all(&entries)
+    }
+
+    fn load_table(&self, table: &str) -> Result<Vec<Entry>, String> {
+        if !hyper_fs_backend::config::absolute_path(table) {
+            return Err("fstab path must be absolute and normalized".into());
+        }
+        fstab::load(&self.root, table)
+    }
+
+    fn mount_all(&mut self, entries: &[Entry]) -> Result<String, String> {
         let mut failures = Vec::new();
         for entry in entries.iter().filter(|entry| entry.automatic) {
             if self.volumes.iter().any(|volume| {
@@ -209,10 +222,14 @@ impl Manager<'_> {
                 }
                 Ok(output)
             }
-            Request::All => self.mount_all(),
+            Request::All { table } => {
+                let entries = self.load_table(table)?;
+                self.mount_all(&entries)
+            }
             Request::Unmount { target } => self.unmount(target),
-            Request::Entry { name } => {
-                let entry = fstab::load(&self.environment)?
+            Request::Entry { table, name } => {
+                let entry = self
+                    .load_table(table)?
                     .into_iter()
                     .find(|entry| entry.source == name || entry.target == name)
                     .ok_or("no matching fstab entry")?;

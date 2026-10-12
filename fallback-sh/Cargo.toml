@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 [package]
-workspace = "../../../app"
+workspace = ".."
 name = "hyper-fallback-sh"
 version.workspace = true
 edition.workspace = true

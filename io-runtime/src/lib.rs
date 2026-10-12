@@ -26,3 +26,6 @@ pub mod rp1;
 pub mod pci;
 
 pub mod guest_log;
+
+pub mod guest;
+pub mod protocol;
