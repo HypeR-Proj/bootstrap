@@ -22,12 +22,12 @@ fn admission_rejects_foreign_itb_architecture_with_diagnostic() {
         let image = GuestImage {
             architecture,
             initramfs: None,
-            kernel: hyper_vm_image::Payload {
+            kernel: crate::image::Payload {
                 file_offset: 0,
                 length: 64,
                 load_address: 0,
                 entry_address: 0,
-                compression: hyper_vm_image::Compression::None,
+                compression: crate::image::Compression::None,
             },
         };
         let error = configure(image, &config).unwrap_err();

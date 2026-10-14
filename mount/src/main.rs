@@ -7,7 +7,7 @@ fn run() -> Result<(), String> {
     let mut args = std::env::args().skip(1);
     let mut operands = Vec::new();
     let mut all = false;
-    let mut table = hyper_service::filesystem::control::SYSTEM_FSTAB.to_string();
+    let mut table = crate::contracts::filesystem::control::SYSTEM_FSTAB.to_string();
     let mut explicit_table = false;
     let mut format = "auto".to_string();
     let mut options = "defaults".to_string();
@@ -15,7 +15,7 @@ fn run() -> Result<(), String> {
         match argument.as_str() {
             "-h" | "--help" => {
                 println!(
-                    "usage: mount [-T FSTAB] -a\n       mount [-T FSTAB] SOURCE_OR_TARGET\n       mount [-t auto|fat|erofs] [-o ro|rw] SOURCE TARGET\nWithout arguments, list mounted Native volumes. The default table is /system/etc/fstab.\nUse -T /etc/fstab before switch_root, or -T /boot/etc/fstab afterwards, for bootstrap mounts."
+                    "usage: mount [-T FSTAB] -a\n       mount [-T FSTAB] SOURCE_OR_TARGET\n       mount [-t auto|fat|erofs] [-o ro|rw] SOURCE TARGET\nWithout arguments, list mounted Native volumes. The default bootstrap table is /etc/fstab.\nUse -T PATH to select another table during recovery."
                 );
                 return Ok(());
             }
@@ -57,7 +57,7 @@ fn run() -> Result<(), String> {
         request.push(0);
     }
     let mut startup = hyper_rt::process::startup().map_err(|error| format!("{error:?}"))?;
-    let (ok, response) = hyper_service::filesystem::control::execute(&mut startup, &request)
+    let (ok, response) = crate::contracts::filesystem::control::execute(&mut startup, &request)
         .map_err(|error| format!("mount service unavailable: {error:?}"))?;
     if ok {
         print!("{response}");
@@ -70,8 +70,10 @@ fn main() -> std::process::ExitCode {
     match run() {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("mount: {error}");
+            eprintln!("bootstrap-stage1-mount: {error}");
             std::process::ExitCode::FAILURE
         }
     }
 }
+#[path = "../../contracts/mod.rs"]
+mod contracts;

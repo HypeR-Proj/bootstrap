@@ -9,7 +9,7 @@ use std::collections::VecDeque;
 
 pub struct Session {
     pub channel: Channel,
-    access: u64,
+    pub(super) access: u64,
     pub read: Option<Header>,
     pub read_blocked: bool,
     last_request: u64,

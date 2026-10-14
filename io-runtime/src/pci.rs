@@ -3,12 +3,12 @@
 
 //! Guest PCI transport assembled from the claimed function's resource metadata.
 
+use crate::image::guest_fdt::io::{FirmwareNode, MmioWindow, PciBar, PciHost};
 use hyper_os::device::{self, FirmwareIdentity, Profile, ProfileInfo, ResourceInfo};
 use hyper_os::handle::{
     DeviceAssignmentAuthorityObject, HandleRef, OwnedHandle, PhysicalDeviceObject,
 };
 use hyper_os::{Error, Result};
-use hyper_vm_image::guest_fdt::io::{FirmwareNode, MmioWindow, PciBar, PciHost};
 
 pub struct Assignment {
     device: OwnedHandle<PhysicalDeviceObject>,
@@ -52,6 +52,10 @@ impl Assignment {
         }
         let resources = Resources::project(info, &descriptions, base, interrupt_base)?;
         Ok(Self { device, resources })
+    }
+
+    pub fn into_device(self) -> OwnedHandle<PhysicalDeviceObject> {
+        self.device
     }
 
     pub fn device(&self) -> &OwnedHandle<PhysicalDeviceObject> {

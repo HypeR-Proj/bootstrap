@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 roolrz
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::contracts::filesystem::control::Request;
 use crate::format::{self as driver, Format, PROBE_BYTES};
 use crate::{filesystem_error, process::Worker, show};
 use hyper_fs_backend::{
@@ -13,22 +14,21 @@ use hyper_os::{
     fs::Directory,
     startup::Startup,
 };
-use hyper_service::filesystem::control::Request;
 
 pub(super) struct Volume {
-    pub id: hyper_block::Guid,
+    pub id: crate::contracts::filesystem::Guid,
     pub label: String,
-    geometry: VolumeInfo,
+    pub(super) geometry: VolumeInfo,
     pub block: Option<NativeBlock>,
-    worker: Option<Worker>,
+    pub(super) worker: Option<Worker>,
 }
 impl Volume {
     fn matches(&self, source: &str) -> bool {
-        hyper_block::Selector::parse(source)
+        crate::contracts::filesystem::Selector::parse(source)
             .is_some_and(|selector| selector.matches(self.id, &self.label))
     }
     pub fn new(
-        id: hyper_block::Guid,
+        id: crate::contracts::filesystem::Guid,
         label: String,
         geometry: VolumeInfo,
         block: NativeBlock,
@@ -78,7 +78,7 @@ impl Manager<'_> {
             }
             if let Err(error) = self.mount(entry) {
                 eprintln!(
-                    "HypeR fs-backend: {} on {}: {error}",
+                    "HypeR bootstrap-stage1-fs-backend: {} on {}: {error}",
                     entry.source, entry.target
                 );
                 if entry.required {
@@ -94,7 +94,7 @@ impl Manager<'_> {
     }
     fn mount(&mut self, entry: &Entry) -> Result<(), String> {
         let config = Config::load(&self.environment)?;
-        if hyper_block::Selector::parse(&entry.source).is_none()
+        if crate::contracts::filesystem::Selector::parse(&entry.source).is_none()
             || !hyper_fs_backend::config::absolute_path(&entry.target)
             || entry.target == "/"
         {
@@ -154,9 +154,18 @@ impl Manager<'_> {
                 worker::Source::Environment => &self.environment,
                 worker::Source::Namespace => &self.root,
             };
-            directory.open(path, hyper_service::process::EXECUTABLE_FILE_RIGHTS)
+            directory.open(path, crate::contracts::process::EXECUTABLE_FILE_RIGHTS)
         })?;
-        std::fs::create_dir_all(&entry.target).map_err(|error| error.to_string())?;
+        // An existing mountpoint needs no directory mutation. In particular,
+        // mounting a writable volume over an EROFS root must not try mkdir.
+        match std::fs::metadata(&entry.target) {
+            Ok(metadata) if metadata.is_dir() => {}
+            Ok(_) => return Err("mount target is not a directory".into()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                std::fs::create_dir_all(&entry.target).map_err(|error| error.to_string())?;
+            }
+            Err(error) => return Err(error.to_string()),
+        }
         let mut worker = Worker::start(
             &self.startup,
             &self.root,
@@ -172,10 +181,18 @@ impl Manager<'_> {
                 Ok(())
             }
             Err(error) => {
+                // Publication may have committed before mount identity inspection
+                // failed. Keep that live provider; never drop its exclusive media.
+                if worker.published {
+                    volume.worker = Some(worker);
+                    return Err(error);
+                }
                 match worker.finish() {
                     Ok(block) => volume.block = Some(block),
                     Err(cleanup) => {
-                        eprintln!("HypeR fs-backend: rejected mount cleanup: {cleanup}")
+                        eprintln!(
+                            "HypeR bootstrap-stage1-fs-backend: rejected mount cleanup: {cleanup}"
+                        )
                     }
                 }
                 Err(error)
@@ -205,6 +222,11 @@ impl Manager<'_> {
     pub fn command(&mut self, request: Request<'_>) -> Result<String, String> {
         match request {
             Request::List => {
+                // Root switching preserves mount identity, but a rejected
+                // successor can leave this original manager serving control.
+                // Resolve the current root label without rewriting its original
+                // target: a still-pending root transition may also roll back.
+                let root_mount = self.root.info().map_err(show)?.location().mount().get();
                 let mut output = String::new();
                 for volume in &self.volumes {
                     if let Some(worker) = &volume.worker {
@@ -213,7 +235,11 @@ impl Manager<'_> {
                             output,
                             "{} on {} type {} ({})",
                             format_args!("PARTUUID={}", volume.id),
-                            worker.target,
+                            if worker.mount_id == Some(root_mount) {
+                                "/"
+                            } else {
+                                &worker.target
+                            },
                             worker.format.name().to_ascii_lowercase(),
                             if worker.read_only { "ro" } else { "rw" }
                         )

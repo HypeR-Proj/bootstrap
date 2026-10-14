@@ -4,21 +4,22 @@
 //! Blocking capability rendezvous is confined to admission workers. The bounded
 //! mailbox wakes the byte reactor; no worker owns physical input or output.
 
+use crate::contracts::console as contract;
 use core::mem::MaybeUninit;
 use hyper_os::capability_channel::{CapabilityChannel, CapabilityReceiveSlot};
 use hyper_os::handle::{ByteChannelObject, CapabilityChannelObject, OwnedHandle};
 use hyper_os::stream;
 use hyper_os::{Error, Result, Status};
-use hyper_service::console as contract;
 use std::sync::{
     Arc,
-    atomic::{AtomicU64, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
     mpsc::{Receiver, SyncSender, sync_channel},
 };
 use std::time::Duration;
 
 type Channel = OwnedHandle<ByteChannelObject>;
 pub enum Event {
+    LogsStopped,
     Control {
         operation: u32,
         epoch: u64,
@@ -122,18 +123,37 @@ pub fn control(listener: CapabilityChannel, sender: Sender) -> Result<()> {
     })
     .map(drop)
 }
-pub fn logs(listener: CapabilityChannel, sender: Sender) -> Result<()> {
+pub fn logs(
+    listener: CapabilityChannel,
+    sender: Sender,
+    stop: Option<Arc<AtomicBool>>,
+) -> Result<()> {
     spawn("console-log-admit", move || {
         loop {
+            if stop
+                .as_ref()
+                .is_some_and(|stop| stop.load(Ordering::Acquire))
+            {
+                break;
+            }
+            let deadline = if stop.is_some() {
+                let Ok(deadline) = hyper_os::time::deadline_after(Duration::from_millis(100))
+                else {
+                    break;
+                };
+                deadline.as_raw()
+            } else {
+                hyper_os::DEADLINE_INFINITE
+            };
             let mut bytes = [MaybeUninit::uninit(); 4 + contract::MAX_LOG_NAME];
             let mut slots = [CapabilityReceiveSlot::new::<ByteChannelObject>(
                 contract::SERVER_RIGHTS,
             )];
-            let message =
-                match listener.receive(hyper_os::DEADLINE_INFINITE, &mut bytes, &mut slots) {
-                    Ok(message) => message,
-                    Err(_) => return,
-                };
+            let message = match listener.receive(deadline, &mut bytes, &mut slots) {
+                Ok(message) => message,
+                Err(Error::Status(Status::TIMED_OUT)) => continue,
+                Err(_) => break,
+            };
             if message.bytes().len() <= 4
                 || message.bytes()[..4] != contract::LOG_MAGIC
                 || message.capability_count() != 1
@@ -153,6 +173,9 @@ pub fn logs(listener: CapabilityChannel, sender: Sender) -> Result<()> {
                 return;
             }
         }
+        // Ordered behind the final accepted Log event in the same mailbox.
+        // Drain acknowledgment cannot overtake an admitted but unprocessed log.
+        let _ = sender.send(Event::LogsStopped);
     })
     .map(drop)
 }

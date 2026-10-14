@@ -9,7 +9,7 @@ fn main() -> ExitCode {
     let Ok(mut startup) = hyper_rt::process::startup() else {
         return ExitCode::FAILURE;
     };
-    match hyper_service_manager::runtime::run(&mut startup) {
+    match hyper_bootstrap_stage1_init::runtime::run(&mut startup) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             use std::io::Write;

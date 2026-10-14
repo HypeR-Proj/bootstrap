@@ -11,82 +11,32 @@ pub enum ImageSource {
     Namespace,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum RuntimeEnvironment {
-    Recovery,
-    System,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum Authority {
-    Filesystem,
-    Tasks,
-    Handles,
-    Memory,
-    Activity,
-    VirtualMachines,
-}
-
 pub struct Program {
     pub path: String,
     pub source: ImageSource,
-    pub environment: RuntimeEnvironment,
-    pub authority: Option<Authority>,
+    pub filesystem_authority: bool,
 }
 
 impl Program {
-    pub fn is_shell(&self) -> bool {
-        matches!(
-            (self.source, self.path.as_str()),
-            (ImageSource::Namespace, "/system/bin/sh")
-        )
-    }
-
     pub fn resolve(name: &str, cwd: &CanonicalPath) -> Result<Self, Error> {
         let (source, path) = if name.contains('/') {
             (
                 ImageSource::Namespace,
                 cwd.resolve(name)?.as_str()?.to_owned(),
             )
-        } else if matches!(name, "mount" | "umount") {
+        } else {
             (ImageSource::Environment, format!("bin/{name}"))
-        } else {
-            (
-                ImageSource::Namespace,
-                CanonicalPath::root()
-                    .resolve(&format!("/system/bin/{name}"))?
-                    .as_str()?
-                    .to_owned(),
-            )
         };
-        let environment = if source == ImageSource::Environment
-            || path.starts_with("/boot/")
-            || matches!(path.as_str(), "/bin/mount" | "/bin/umount")
-        {
-            RuntimeEnvironment::Recovery
-        } else {
-            RuntimeEnvironment::System
-        };
-        // Authority follows the selected trusted program, never its basename.
-        let authority = match (source, path.as_str()) {
+        // Only recovery filesystem administration receives a service connector.
+        let filesystem_authority = matches!(
+            (source, path.as_str()),
             (ImageSource::Environment, "bin/mount" | "bin/umount")
-            | (
-                ImageSource::Namespace,
-                "/boot/bin/mount" | "/boot/bin/umount" | "/bin/mount" | "/bin/umount"
-                | "/system/bin/mount" | "/system/bin/umount",
-            ) => Some(Authority::Filesystem),
-            (ImageSource::Namespace, "/system/bin/ps") => Some(Authority::Tasks),
-            (ImageSource::Namespace, "/system/bin/handle") => Some(Authority::Handles),
-            (ImageSource::Namespace, "/system/bin/free") => Some(Authority::Memory),
-            (ImageSource::Namespace, "/system/bin/top") => Some(Authority::Activity),
-            (ImageSource::Namespace, "/system/bin/vmm") => Some(Authority::VirtualMachines),
-            _ => None,
-        };
+                | (ImageSource::Namespace, "/bin/mount" | "/bin/umount")
+        );
         Ok(Self {
             path,
             source,
-            environment,
-            authority,
+            filesystem_authority,
         })
     }
 }

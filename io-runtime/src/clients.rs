@@ -3,9 +3,10 @@
 
 //! Board-authored disk and network policy shared by Native and Linux supervisors.
 
-use hyper_vm_image::guest_fdt::io::DmaRange;
+use crate::image::guest_fdt::io::DmaRange;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Client {
     pub id: u32,
     pub volume: Option<String>,
@@ -14,8 +15,15 @@ pub struct Client {
 }
 
 impl Client {
-    pub fn connection(&self) -> hyper_service::io::Connection<'_> {
-        hyper_service::io::Connection {
+    /// The same media or network identity cannot belong to two client slots.
+    pub(crate) fn conflicts_with(&self, other: &Self) -> bool {
+        self.id == other.id
+            || (self.volume.is_some() && other.volume == self.volume)
+            || (self.network.is_some() && other.mac == self.mac)
+    }
+
+    pub fn connection(&self) -> crate::contracts::io::Connection<'_> {
+        crate::contracts::io::Connection {
             client: self.id,
             volume: self.volume.as_deref(),
             network: self.network.as_deref(),
@@ -56,15 +64,11 @@ pub fn parse(bytes: &str) -> Result<Vec<Client>, &'static str> {
             mac: if *mac == "-" {
                 [0; 6]
             } else {
-                hyper_service::io::parse_mac(mac).ok_or("invalid client MAC")?
+                crate::contracts::io::parse_mac(mac).ok_or("invalid client MAC")?
             },
         };
         if client.connection().encode().is_none()
-            || clients.iter().any(|other: &Client| {
-                other.id == id
-                    || (client.volume.is_some() && other.volume == client.volume)
-                    || (client.network.is_some() && other.mac == client.mac)
-            })
+            || clients.iter().any(|other| client.conflicts_with(other))
         {
             return Err("invalid or duplicate I/O client");
         }

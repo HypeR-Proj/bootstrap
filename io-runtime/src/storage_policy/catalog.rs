@@ -4,8 +4,9 @@
 //! Resolve on-disk identities before publishing any backend assignment.
 
 use super::{Policy, Volume};
+use crate::contracts::filesystem::Selector;
+use crate::partition as gpt;
 use crate::protocol::block::Disk;
-use hyper_block::{Selector, gpt};
 
 const MAX_PARTITIONS: usize = 4096;
 

@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::parent;
+use crate::image::guest_fdt::io::{FirmwareNode, FirmwareProperty};
 use hyper_os::{Error, Result};
-use hyper_vm_image::guest_fdt::io::{FirmwareNode, FirmwareProperty};
 
 pub(super) struct Node {
     pub path: String,

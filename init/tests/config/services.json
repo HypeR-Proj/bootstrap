@@ -3,7 +3,7 @@
   "SPDX-License-Identifier": "Apache-2.0",
   "format": "hyper.service-manifest",
   "virtual-machines": {
-    "config": "/boot/etc/hyper/vms.json"
+    "config": "/etc/hyper/vms.json"
   },
   "services": [
     {
@@ -198,7 +198,7 @@
           ]
         },
         {
-          "source": "bootstrap.boot-environment-directory",
+          "source": "bootstrap.environment-directory",
           "purpose": "process.environment-directory",
           "operation": "duplicate",
           "rights": [

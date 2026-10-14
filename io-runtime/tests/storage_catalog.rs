@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use super::*;
-use hyper_block::Guid;
+use crate::contracts::filesystem::Guid;
 
 fn disk(id: u64) -> Disk {
     Disk {

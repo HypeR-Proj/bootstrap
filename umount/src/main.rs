@@ -20,7 +20,7 @@ fn run() -> Result<(), String> {
     let request = format!("umount\0{target}\0");
     let mut startup = hyper_rt::process::startup().map_err(|error| format!("{error:?}"))?;
     let (ok, response) =
-        hyper_service::filesystem::control::execute(&mut startup, request.as_bytes())
+        crate::contracts::filesystem::control::execute(&mut startup, request.as_bytes())
             .map_err(|error| format!("mount service unavailable: {error:?}"))?;
     if ok {
         print!("{response}");
@@ -33,8 +33,10 @@ fn main() -> std::process::ExitCode {
     match run() {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("umount: {error}");
+            eprintln!("bootstrap-stage1-umount: {error}");
             std::process::ExitCode::FAILURE
         }
     }
 }
+#[path = "../../contracts/mod.rs"]
+mod contracts;

@@ -60,8 +60,8 @@ pub struct Configuration {
     pub affinity: Vec<Affinity>,
 }
 impl Configuration {
-    pub fn image_configuration(&self) -> Result<hyper_vm_image::Configuration, String> {
-        use hyper_vm_image::BootArguments;
+    pub fn image_configuration(&self) -> Result<crate::image::Configuration, String> {
+        use crate::image::BootArguments;
         // Architecture-specific limits are checked after reading the ITB.
         if !(1..=8).contains(&self.vcpus) {
             return Err("VM requires 1..=8 vCPUs".into());
@@ -72,7 +72,7 @@ impl Configuration {
         }
         let boot_arguments = BootArguments::new(&self.bootargs)
             .map_err(|_| "VM bootargs must contain at most 2048 bytes and no NUL".to_string())?;
-        Ok(hyper_vm_image::Configuration {
+        Ok(crate::image::Configuration {
             memory_size: self.memory_bytes,
             vcpu_count: self.vcpus,
             boot_arguments,

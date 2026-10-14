@@ -3,9 +3,9 @@
 
 //! Conversion between validated image identity and Native platform metadata.
 
+use crate::image::guest_fdt::GuestHardwareMetadata;
+use crate::image::{Architecture, PlatformProfile};
 use hyper_os::vm;
-use hyper_vm_image::guest_fdt::GuestHardwareMetadata;
-use hyper_vm_image::{Architecture, PlatformProfile};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum SelectionError {

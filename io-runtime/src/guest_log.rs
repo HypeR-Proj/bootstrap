@@ -16,10 +16,17 @@ impl Default for GuestLog {
 }
 
 impl GuestLog {
+    pub fn line_start(&self) -> bool {
+        self.line_start
+    }
+    pub fn restore(line_start: bool) -> Self {
+        Self { line_start }
+    }
+
     pub fn write(&mut self, output: &mut impl Write, bytes: &[u8]) -> io::Result<()> {
         for part in bytes.split_inclusive(|byte| *byte == b'\n') {
             if self.line_start {
-                output.write_all(b"HypeR IO VM: ")?;
+                output.write_all(b"HypeR bootstrap-stage1-io-runtime: IO VM: ")?;
                 self.line_start = false;
             }
             output.write_all(part)?;

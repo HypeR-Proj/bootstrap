@@ -3,22 +3,33 @@
 
 [package]
 workspace = ".."
-name = "hyper-init"
+name = "hyper-bootstrap-stage1-init"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 publish.workspace = true
+autotests = false
 
 [[bin]]
-name = "hyper-init"
+name = "hyper-bootstrap-stage1-init"
 path = "src/main.rs"
 test = false
 bench = false
 
 [dependencies]
 hyper-rt.workspace = true
-hyper-service-manager.workspace = true
+hyper-os.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 
 [lints]
 workspace = true
+
+# Standalone no-device acceptance fixture; never selected by component.mk.
+[[bin]]
+name = "hyper-native-test-init"
+path = "../../../tests/app/native-init.rs"
+doc = false
+test = false
+bench = false

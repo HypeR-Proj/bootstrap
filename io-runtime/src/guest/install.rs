@@ -3,14 +3,14 @@
 
 //! Shared image preparation and installation for physical-I/O deployments.
 
+use crate::image::guest_fdt::io::IoDevices;
+use crate::image::{Payload, ReadAt, guest_fdt, linux};
 use hyper_os::handle::{Rights, VirtualCpuObject, VirtualMachineObject};
 use hyper_os::memory::WritableVmo;
 use hyper_os::startup::{self, Startup};
 use hyper_os::virtual_serial::Output;
 use hyper_os::vm;
 use hyper_os::{device, virtual_serial};
-use hyper_vm_image::guest_fdt::io::IoDevices;
-use hyper_vm_image::{Payload, ReadAt, guest_fdt, linux};
 use std::fs::File;
 use std::io;
 use std::os::hyper::fs::FileExt;
@@ -31,8 +31,8 @@ fn show(error: impl std::fmt::Debug) -> String {
 }
 
 pub struct InstalledGuest {
-    name: String,
-    image: String,
+    pub name: String,
+    pub image: String,
     pub machine: Arc<hyper_os::OwnedHandle<VirtualMachineObject>>,
     pub cpus: Vec<Arc<hyper_os::OwnedHandle<VirtualCpuObject>>>,
     pub output: Output,
@@ -81,19 +81,19 @@ impl Image {
             .map_err(|error| format!("stat {path}: {error}"))?
             .len();
         let source = super::read_cache::CachedSource::new(Source { file, length }).map_err(show)?;
-        let image = hyper_vm_image::parse(&source).map_err(show)?;
+        let image = crate::image::parse(&source).map_err(show)?;
         let image = super::image::configure(image, &definition.configuration)?;
         let plan = linux::validate_reference(&source, image).map_err(show)?;
         let source = source.into_inner();
         if plan.memory_base() != RAM_BASE
             || ![64 * 1024 * 1024, RAM_BYTES].contains(&plan.memory_size())
-            || plan.architecture() != hyper_vm_image::Architecture::Aarch64
+            || plan.architecture() != crate::image::Architecture::Aarch64
         {
             return Err("I/O deployment requires 64 or 128 MiB AArch64 reference images".into());
         }
-        println!("HypeR I/O loader: validated {path}, allocating guest RAM");
+        println!("HypeR bootstrap-stage1-io-runtime: validated {path}, allocating guest RAM");
         let memory = WritableVmo::create_contiguous(plan.memory_size()).map_err(show)?;
-        println!("HypeR I/O loader: copying {path} kernel");
+        println!("HypeR bootstrap-stage1-io-runtime: copying {path} kernel");
         copy_payload(&source, &memory, image.kernel)?;
         if let Some(payload) = image.initramfs {
             copy_payload(&source, &memory, payload)?;

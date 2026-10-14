@@ -3,19 +3,14 @@
 
 //! Capability-preserving pipeline construction and foreground supervision.
 use super::{CommandAuthorities, Error, WORKING_DIRECTORY_RIGHTS, write_terminal};
+use crate::contracts::stdio::{Inherited, StandardStream};
+use crate::contracts::{filesystem, process};
 use hyper_fallback_sh::command::CommandLine;
-use hyper_fallback_sh::program::{Authority, ImageSource, Program, RuntimeEnvironment};
-use hyper_os::capability_channel::{CapabilityChannel, CapabilityDisposition};
-use hyper_os::channel;
-use hyper_os::handle::{
-    ByteChannelObject, CapabilityChannelObject, OwnedHandle, Rights, RightsOffer,
-};
+use hyper_fallback_sh::program::{ImageSource, Program};
+use hyper_os::handle::{Rights, RightsOffer};
 use hyper_os::startup;
 use hyper_os::task::{ProcessBuilder, ProcessInfo, ProcessTermination};
-use hyper_os::wait::{ObjectSignals, WaitItem, wait_many};
 use hyper_os::{Error as OsError, Status};
-use hyper_service::stdio::{Inherited, StandardStream};
-use hyper_service::{filesystem, process, stdio, vm};
 
 fn prepare_command(
     command: &CommandLine,
@@ -32,7 +27,7 @@ fn prepare_command(
     };
     let executable = match image_directory.open(
         &program.path,
-        hyper_service::process::EXECUTABLE_FILE_RIGHTS,
+        crate::contracts::process::EXECUTABLE_FILE_RIGHTS,
     ) {
         Ok(executable) => executable,
         Err(open_error) => {
@@ -43,7 +38,7 @@ fn prepare_command(
             };
             write_terminal(
                 format!(
-                    "fallback-sh: {reason}: {name:?} (input: \"{}\"; {open_error:?})\r\n",
+                    "bootstrap-stage1-fallback-sh: {reason}: {name:?} (input: \"{}\"; {open_error:?})\r\n",
                     source.escape_ascii()
                 )
                 .as_bytes(),
@@ -51,28 +46,9 @@ fn prepare_command(
             return Err(Error::InvalidCommand);
         }
     };
-    // Commands outside the recovery tree use the full loader even for static ELF.
-    // Keep recovery independent of the mounted system and its loader.
-    // Resolve /system only when starting a system command. A directory opened
-    // before storage mounts would keep naming the covered RAM directory.
-    let system_environment = match program.environment {
-        RuntimeEnvironment::Recovery => None,
-        RuntimeEnvironment::System => Some(
-            process::open_environment(&authorities.root_directory, "/system")
-                .map_err(Error::from)?,
-        ),
-    };
-    let system_libraries = system_environment
-        .as_ref()
-        .map(process::open_library_directory)
-        .transpose()
-        .map_err(Error::from)?;
-    let command_loader = system_environment
-        .as_ref()
-        .map(|environment| process::open_loader(environment, process::LoaderKind::Dynamic))
-        .transpose()
-        .map_err(Error::from)?;
-    let loader = command_loader.as_ref().unwrap_or(&authorities.loader);
+    // Recovery launches only static executables through its retained loader.
+    // Explicit paths do not gain formal-shell privileges or library authority.
+    let loader = &authorities.loader;
     let builder = ProcessBuilder::create(
         authorities.factory.as_handle_ref(),
         authorities.group.as_handle_ref(),
@@ -81,32 +57,11 @@ fn prepare_command(
         loader.as_handle_ref(),
     )
     .map_err(Error::from)?;
-    if program.is_shell() {
-        process::ShellDelegation {
-            environment: authorities.environment.as_handle_ref(),
-            loader: authorities.loader.as_handle_ref(),
-            libraries: authorities.library_directory.as_handle_ref(),
-            tasks: authorities.task_inspector.as_handle_ref(),
-            objects: authorities.object_inspector.as_handle_ref(),
-            memory: authorities.memory_inspector.as_handle_ref(),
-            cpus: authorities.cpu_inspector.as_handle_ref(),
-            filesystem: authorities
-                .filesystem_control
-                .as_ref()
-                .map(OwnedHandle::as_handle_ref),
-            virtual_machines: authorities
-                .vm_connection
-                .as_ref()
-                .map(CapabilityChannel::as_handle_ref),
-        }
-        .add_to(&builder)?;
-    } else {
-        builder.add_handle_duplicate(
-            loader.as_handle_ref(),
-            process::CHILD_LOADER.as_raw(),
-            RightsOffer::Exact(process::CHILD_LOADER_CONTRACT.allowed_rights()),
-        )?;
-    }
+    builder.add_handle_duplicate(
+        loader.as_handle_ref(),
+        process::CHILD_LOADER.as_raw(),
+        RightsOffer::Exact(process::CHILD_LOADER_CONTRACT.allowed_rights()),
+    )?;
     builder.set_name(name).map_err(Error::from)?;
     for index in 0..command.len() {
         builder
@@ -115,10 +70,7 @@ fn prepare_command(
     }
     builder
         .add_handle_duplicate(
-            system_libraries
-                .as_ref()
-                .unwrap_or(&authorities.library_directory)
-                .as_handle_ref(),
+            authorities.library_directory.as_handle_ref(),
             startup::DYNAMIC_LIBRARY_DIRECTORY.as_raw(),
             RightsOffer::Exact(
                 Rights::READ
@@ -179,98 +131,16 @@ fn prepare_command(
         .map_err(|_| Error::InvalidCommand)?;
     child.input.add_to(&builder, StandardStream::Input)?;
     child.output.add_to(&builder, StandardStream::Output)?;
-    match program.authority {
-        Some(Authority::Filesystem) => {
-            if let Some(control) = authorities.filesystem_control.as_ref() {
-                builder
-                    .add_handle_duplicate(
-                        control.as_handle_ref(),
-                        filesystem::CONTROL_CLIENT.as_raw(),
-                        RightsOffer::Exact(Rights::WAIT.union(Rights::WRITE)),
-                    )
-                    .map_err(|_| Error::InvalidCommand)?;
-            }
-        }
-        Some(Authority::Tasks) => builder
+    if program.filesystem_authority
+        && let Some(control) = authorities.filesystem_control.as_ref()
+    {
+        builder
             .add_handle_duplicate(
-                authorities.task_inspector.as_handle_ref(),
-                startup::TASK_INSPECTOR.as_raw(),
-                RightsOffer::Exact(Rights::INSPECT),
+                control.as_handle_ref(),
+                filesystem::CONTROL_CLIENT.as_raw(),
+                RightsOffer::Exact(Rights::WAIT.union(Rights::WRITE)),
             )
-            .map_err(|_| Error::InvalidCommand)?,
-        Some(Authority::Handles) => {
-            builder
-                .add_handle_duplicate(
-                    authorities.object_inspector.as_handle_ref(),
-                    startup::OBJECT_INSPECTOR.as_raw(),
-                    RightsOffer::Exact(Rights::INSPECT.union(Rights::INSPECT_DETAILS)),
-                )
-                .map_err(|_| Error::InvalidCommand)?;
-            builder
-                .add_handle_duplicate(
-                    authorities.task_inspector.as_handle_ref(),
-                    startup::TASK_INSPECTOR.as_raw(),
-                    RightsOffer::Exact(Rights::INSPECT),
-                )
-                .map_err(|_| Error::InvalidCommand)?;
-        }
-        Some(Authority::Memory) => builder
-            .add_handle_duplicate(
-                authorities.memory_inspector.as_handle_ref(),
-                startup::MEMORY_INSPECTOR.as_raw(),
-                RightsOffer::Exact(Rights::INSPECT),
-            )
-            .map_err(|_| Error::InvalidCommand)?,
-        Some(Authority::Activity) => {
-            builder
-                .add_handle_duplicate(
-                    authorities.task_inspector.as_handle_ref(),
-                    startup::TASK_INSPECTOR.as_raw(),
-                    RightsOffer::Exact(Rights::INSPECT),
-                )
-                .map_err(|_| Error::InvalidCommand)?;
-            builder
-                .add_handle_duplicate(
-                    authorities.memory_inspector.as_handle_ref(),
-                    startup::MEMORY_INSPECTOR.as_raw(),
-                    RightsOffer::Exact(Rights::INSPECT),
-                )
-                .map_err(|_| Error::InvalidCommand)?;
-            builder
-                .add_handle_duplicate(
-                    authorities.cpu_inspector.as_handle_ref(),
-                    startup::CPU_INSPECTOR.as_raw(),
-                    RightsOffer::Exact(Rights::INSPECT),
-                )
-                .map_err(|_| Error::InvalidCommand)?;
-        }
-        Some(Authority::VirtualMachines) if authorities.vm_connection.is_some() => {
-            let (client_control, manager_control) = channel::create_pair().map_err(Error::from)?;
-            let (manager_capabilities, client_capabilities) =
-                CapabilityChannel::create().map_err(Error::from)?;
-            connect_vm_manager(
-                authorities
-                    .vm_connection
-                    .as_ref()
-                    .ok_or(Error::InvalidCommand)?,
-                manager_control,
-                manager_capabilities,
-            )?;
-            add_child_channel(
-                &builder,
-                client_control,
-                vm::CLIENT_CONTROL.as_raw(),
-                vm::CLIENT_CONTROL_CONTRACT.required_rights(),
-            )?;
-            builder
-                .add_handle_move(
-                    client_capabilities.into_handle(),
-                    vm::CLIENT_CAPABILITIES.as_raw(),
-                    RightsOffer::Exact(vm::CLIENT_CAPABILITIES_CONTRACT.required_rights()),
-                )
-                .map_err(|failure| Error::from(failure.error()))?;
-        }
-        _ => {}
+            .map_err(|_| Error::InvalidCommand)?;
     }
     child.error.add_to(&builder, StandardStream::Error)?;
     builder.seal().map_err(Error::from)?;
@@ -304,71 +174,9 @@ pub(super) fn launch_command(
         .as_process_supervisor()
         .wait_terminated(hyper_os::DEADLINE_INFINITE)?;
     if !process_succeeded(child.as_process_supervisor().info()?) {
-        write_terminal(b"fallback-sh: command failed\r\n")?;
+        write_terminal(b"bootstrap-stage1-fallback-sh: command failed\r\n")?;
     }
     Ok(())
-}
-
-fn connect_vm_manager(
-    connector: &CapabilityChannel,
-    control: OwnedHandle<ByteChannelObject>,
-    capabilities: CapabilityChannel,
-) -> Result<(), Error> {
-    let mut control = Some(control);
-    let mut capabilities = Some(capabilities.into_handle());
-    loop {
-        let waits = [WaitItem::new(
-            connector.as_handle_ref(),
-            ObjectSignals::<CapabilityChannelObject>::PEER_RECEIVING
-                .union(ObjectSignals::<CapabilityChannelObject>::PEER_CLOSED),
-        )];
-        let observation = wait_many(&waits, hyper_os::DEADLINE_INFINITE).map_err(Error::from)?;
-        if !ObjectSignals::<CapabilityChannelObject>::PEER_RECEIVING
-            .is_present_in(observation.observed)
-        {
-            return Err(Error::from(OsError::Status(Status::PEER_CLOSED)));
-        }
-        let control_disposition = CapabilityDisposition::move_handle(
-            &mut control,
-            RightsOffer::Exact(Rights::WAIT.union(Rights::READ).union(Rights::WRITE)),
-        )
-        .map_err(Error::from)?;
-        let capabilities_disposition = CapabilityDisposition::move_handle(
-            &mut capabilities,
-            RightsOffer::Exact(Rights::WAIT.union(Rights::WRITE)),
-        )
-        .map_err(Error::from)?;
-        match connector.try_send(
-            &vm::ManagerConnectionRequest.encode(),
-            &mut [control_disposition, capabilities_disposition],
-        ) {
-            Ok(()) => return Ok(()),
-            Err(OsError::Status(Status::WOULD_BLOCK)) => {}
-            Err(error) => return Err(Error::from(error)),
-        }
-    }
-}
-
-fn add_child_channel(
-    builder: &ProcessBuilder,
-    channel: OwnedHandle<ByteChannelObject>,
-    purpose: u32,
-    rights: Rights,
-) -> Result<(), Error> {
-    let rights = if [
-        stdio::STANDARD_INPUT.as_raw(),
-        stdio::STANDARD_OUTPUT.as_raw(),
-        stdio::STANDARD_ERROR.as_raw(),
-    ]
-    .contains(&purpose)
-    {
-        rights.union(Rights::DUPLICATE).union(Rights::TRANSFER)
-    } else {
-        rights
-    };
-    builder
-        .add_handle_move(channel, purpose, RightsOffer::Exact(rights))
-        .map_err(|failure| Error::from(failure.error()))
 }
 
 fn process_succeeded(info: ProcessInfo) -> bool {

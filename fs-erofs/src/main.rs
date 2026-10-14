@@ -3,13 +3,18 @@
 
 //! Read-only EROFS worker; common filesystem service code owns IPC and mounts.
 
-use hyper_erofs::{Device as ReadDevice, Error as MediaError, Kind};
+#[path = "../../contracts/mod.rs"]
+mod contracts;
+#[path = "../../fs-backend/src/worker_transport.rs"]
+mod worker_transport;
+
 use hyper_filesystem::{
     Timestamp,
     protocol::{self, Entry, Error},
 };
-use hyper_fs_service::Volume;
+use hyper_fs_erofs::{Device as ReadDevice, Error as MediaError, Kind};
 use hyper_os::block::NativeBlock;
+use worker_transport::Volume;
 
 struct Device {
     block: NativeBlock,
@@ -53,7 +58,7 @@ impl ReadDevice for Device {
     }
 }
 
-struct Erofs(hyper_erofs::Volume<Device>);
+struct Erofs(hyper_fs_erofs::Volume<Device>);
 
 impl Volume for Erofs {
     fn stat(&mut self, path: &str) -> Result<Entry, Error> {
@@ -104,7 +109,7 @@ impl Volume for Erofs {
     }
 }
 
-fn metadata(value: hyper_erofs::Entry) -> Result<Entry, Error> {
+fn metadata(value: hyper_fs_erofs::Entry) -> Result<Entry, Error> {
     let mut result = Entry::empty();
     result
         .name
@@ -147,13 +152,13 @@ fn run() -> Result<(), String> {
     }
     let block = NativeBlock::from_handle(
         startup
-            .take(hyper_service::filesystem::BLOCK)
+            .take(crate::contracts::filesystem::BLOCK)
             .map_err(show)?,
     );
     let bytes = sectors.checked_mul(512).ok_or("invalid volume geometry")?;
-    let mut volume = Erofs(hyper_erofs::Volume::mount(Device { block, bytes }).map_err(show)?);
-    let completion = hyper_fs_service::serve(&mut startup, &mut volume)?;
-    hyper_fs_service::return_block(completion, volume.0.into_device().block)
+    let mut volume = Erofs(hyper_fs_erofs::Volume::mount(Device { block, bytes }).map_err(show)?);
+    let completion = worker_transport::serve(&mut startup, &mut volume)?;
+    worker_transport::return_block(completion, volume.0.into_device().block)
 }
 
 fn show(error: impl core::fmt::Debug) -> String {
@@ -164,7 +169,7 @@ fn main() -> std::process::ExitCode {
     match run() {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("HypeR fs-erofs: {error}");
+            eprintln!("HypeR bootstrap-stage1-fs-erofs: {error}");
             std::process::ExitCode::FAILURE
         }
     }

@@ -3,27 +3,28 @@
 
 //! Recovery shell and capability-scoped foreground command launcher.
 
+#[path = "../../contracts/mod.rs"]
+mod contracts;
 mod launch;
+
 use launch::launch_command;
 
+use crate::contracts::stdio::{Inherited, StandardStream};
+use crate::contracts::{filesystem, process};
 use hyper_fallback_sh::command::CommandLine;
 use hyper_fallback_sh::editor::{Action, Editor};
 use hyper_fallback_sh::path::CanonicalPath;
 use hyper_os::Error as OsError;
-use hyper_os::capability_channel::CapabilityChannel;
 use hyper_os::fs::{Directory, DirectoryRights, File};
 use hyper_os::handle::{
-    CapabilityChannelObject, CpuInspectorObject, MemoryInspectorObject, ObjectInspectorObject,
-    OwnedHandle, ResourceDomainObject, TaskFactoryObject, TaskGroupObject, TaskInspectorObject,
+    CapabilityChannelObject, OwnedHandle, ResourceDomainObject, TaskFactoryObject, TaskGroupObject,
 };
 use hyper_os::startup::{self, Startup};
-use hyper_service::stdio::{Inherited, StandardStream};
-use hyper_service::{filesystem, process, vm};
 use std::io::{Read, Write};
 use std::process::ExitCode;
 
 const INPUT_CHUNK_BYTES: usize = 1;
-const READY_MESSAGE: &[u8] = b"HypeR fallback shell: recovery console ready\r\n";
+const READY_MESSAGE: &[u8] = b"HypeR bootstrap-stage1-fallback-sh: recovery console ready\r\n";
 const PROMPT: &[u8] = b"fallback-sh$ ";
 const WORKING_DIRECTORY_RIGHTS: DirectoryRights = DirectoryRights::READ
     .union(DirectoryRights::WRITE)
@@ -71,18 +72,6 @@ fn run(startup: &mut Startup<'_>) -> Result<ExitCode, Error> {
     let domain = startup
         .take(startup::RESOURCE_DOMAIN)
         .map_err(Error::from)?;
-    let task_inspector = startup.take(startup::TASK_INSPECTOR).map_err(Error::from)?;
-    let object_inspector = startup
-        .take(startup::OBJECT_INSPECTOR)
-        .map_err(Error::from)?;
-    let memory_inspector = startup
-        .take(startup::MEMORY_INSPECTOR)
-        .map_err(Error::from)?;
-    let cpu_inspector = startup.take(startup::CPU_INSPECTOR).map_err(Error::from)?;
-    let vm_connection = startup
-        .take_optional(vm::MANAGER_CONNECTION)
-        .map_err(Error::from)?
-        .map(CapabilityChannel::from_handle);
     let filesystem_control = startup
         .take_optional(filesystem::CONTROL_CLIENT)
         .map_err(Error::from)?;
@@ -96,11 +85,6 @@ fn run(startup: &mut Startup<'_>) -> Result<ExitCode, Error> {
         factory,
         group,
         domain,
-        task_inspector,
-        object_inspector,
-        memory_inspector,
-        cpu_inspector,
-        vm_connection,
         filesystem_control,
     };
 
@@ -134,14 +118,16 @@ fn run(startup: &mut Startup<'_>) -> Result<ExitCode, Error> {
                     match execute_line(&line, &mut authorities, &input, &output, error) {
                         Ok(CommandFlow::Continue) => (),
                         Ok(CommandFlow::Exit) => return Ok(ExitCode::SUCCESS),
-                        Err(error) => {
-                            write_terminal(format!("fallback-sh: {error}\r\n").as_bytes())?
-                        }
+                        Err(error) => write_terminal(
+                            format!("bootstrap-stage1-fallback-sh: {error}\r\n").as_bytes(),
+                        )?,
                     }
                     write_terminal(PROMPT)?;
                 }
                 Action::TooLong => {
-                    write_terminal(b"\r\nsh: command line is too long\r\n")?;
+                    write_terminal(
+                        b"\r\nbootstrap-stage1-fallback-sh: command line is too long\r\n",
+                    )?;
                     write_terminal(PROMPT)?;
                 }
                 Action::Cancel => {
@@ -164,7 +150,7 @@ fn execute_line(
     let command = match CommandLine::parse(bytes) {
         Ok(command) => command,
         Err(_) => {
-            write_terminal(b"fallback-sh: invalid command syntax\r\n")?;
+            write_terminal(b"bootstrap-stage1-fallback-sh: invalid command syntax\r\n")?;
             return Ok(CommandFlow::Continue);
         }
     };
@@ -178,7 +164,7 @@ fn execute_line(
         ["cd", target] => builtin_cd(target, authorities)?,
         ["pwd"] => write_terminal(format!("{}\r\n", authorities.current_path.as_str().map_err(|_| Error::InvalidCommand)?).as_bytes())?,
         ["exit"] => return Ok(CommandFlow::Exit),
-        _ if matches!(name, "cd" | "pwd" | "help" | "exit") => write_terminal(b"fallback-sh: invalid builtin arguments\r\n")?,
+        _ if matches!(name, "cd" | "pwd" | "help" | "exit") => write_terminal(b"bootstrap-stage1-fallback-sh: invalid builtin arguments\r\n")?,
         _ => launch_command(&command, bytes, authorities, input, output, error)?,
     }
     Ok(CommandFlow::Continue)
@@ -188,7 +174,7 @@ fn builtin_cd(target: &str, authorities: &mut CommandAuthorities) -> Result<(), 
     let path = match authorities.current_path.resolve(target) {
         Ok(path) => path,
         Err(_) => {
-            write_terminal(b"cd: invalid directory path\r\n")?;
+            write_terminal(b"bootstrap-stage1-fallback-sh: cd: invalid directory path\r\n")?;
             return Ok(());
         }
     };
@@ -205,7 +191,7 @@ fn builtin_cd(target: &str, authorities: &mut CommandAuthorities) -> Result<(), 
     let directory = match directory {
         Ok(directory) => directory,
         Err(_) => {
-            write_terminal(b"cd: cannot open directory\r\n")?;
+            write_terminal(b"bootstrap-stage1-fallback-sh: cd: cannot open directory\r\n")?;
             return Ok(());
         }
     };
@@ -231,11 +217,6 @@ struct CommandAuthorities {
     factory: OwnedHandle<TaskFactoryObject>,
     group: OwnedHandle<TaskGroupObject>,
     domain: OwnedHandle<ResourceDomainObject>,
-    task_inspector: OwnedHandle<TaskInspectorObject>,
-    object_inspector: OwnedHandle<ObjectInspectorObject>,
-    memory_inspector: OwnedHandle<MemoryInspectorObject>,
-    cpu_inspector: OwnedHandle<CpuInspectorObject>,
-    vm_connection: Option<CapabilityChannel>,
     filesystem_control: Option<OwnedHandle<CapabilityChannelObject>>,
 }
 

@@ -77,7 +77,7 @@ fn bars() -> Vec<PciBar> {
     .into_iter()
     .map(|(index, offset, size)| PciBar {
         index,
-        window: hyper_vm_image::guest_fdt::io::MmioWindow {
+        window: crate::image::guest_fdt::io::MmioWindow {
             base: 0xb80_0000 + offset,
             size,
         },
@@ -88,9 +88,9 @@ fn bars() -> Vec<PciBar> {
     .collect()
 }
 fn find<'a>(
-    tree: &'a [hyper_vm_image::guest_fdt::io::FirmwareNode<'a>],
+    tree: &'a [crate::image::guest_fdt::io::FirmwareNode<'a>],
     name: &str,
-) -> Option<&'a hyper_vm_image::guest_fdt::io::FirmwareNode<'a>> {
+) -> Option<&'a crate::image::guest_fdt::io::FirmwareNode<'a>> {
     for node in tree {
         if node.name == name {
             return Some(node);
@@ -101,7 +101,7 @@ fn find<'a>(
     }
     None
 }
-fn property<'a>(node: &'a hyper_vm_image::guest_fdt::io::FirmwareNode<'a>, name: &str) -> &'a [u8] {
+fn property<'a>(node: &'a crate::image::guest_fdt::io::FirmwareNode<'a>, name: &str) -> &'a [u8] {
     node.properties
         .iter()
         .find(|property| property.name == name)

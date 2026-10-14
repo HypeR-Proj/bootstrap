@@ -3,16 +3,21 @@
 
 //! FAT media adapter; the common service owns all IPC and mount machinery.
 
-use hyper_fatfs::{
-    FatVolume,
-    block::{BlockDevice, Error as BlockError},
-};
+#[path = "../../contracts/mod.rs"]
+mod contracts;
+#[path = "../../fs-backend/src/worker_transport.rs"]
+mod worker_transport;
+
 use hyper_filesystem::{
     Timestamp,
     protocol::{self, Entry, Error},
 };
-use hyper_fs_service::Volume;
+use hyper_fs_fat::{
+    FatVolume,
+    block::{BlockDevice, Error as BlockError},
+};
 use hyper_os::block::NativeBlock;
+use worker_transport::Volume;
 
 struct Device {
     block: NativeBlock,
@@ -30,7 +35,7 @@ impl BlockDevice for Device {
     }
 
     fn read_sectors(&mut self, first: u64, output: &mut [u8]) -> Result<(), BlockError> {
-        hyper_fatfs::block::validate_range(self.sectors, first, output.len())?;
+        hyper_fs_fat::block::validate_range(self.sectors, first, output.len())?;
         for (index, bytes) in output.chunks_mut(protocol::DATA_BYTES).enumerate() {
             self.block
                 .read_sectors(first + (index * protocol::DATA_BYTES / 512) as u64, bytes)
@@ -40,7 +45,7 @@ impl BlockDevice for Device {
     }
 
     fn write_sectors(&mut self, first: u64, input: &[u8]) -> Result<(), BlockError> {
-        hyper_fatfs::block::validate_range(self.sectors, first, input.len())?;
+        hyper_fs_fat::block::validate_range(self.sectors, first, input.len())?;
         for (index, bytes) in input.chunks(protocol::DATA_BYTES).enumerate() {
             self.block
                 .write_sectors(first + (index * protocol::DATA_BYTES / 512) as u64, bytes)
@@ -51,9 +56,9 @@ impl BlockDevice for Device {
 
     fn write_batch(
         &mut self,
-        requests: &[hyper_fatfs::block::WriteRequest<'_>],
+        requests: &[hyper_fs_fat::block::WriteRequest<'_>],
     ) -> Result<(), BlockError> {
-        hyper_fatfs::block::validate_writes(self.sectors, requests)?;
+        hyper_fs_fat::block::validate_writes(self.sectors, requests)?;
         let mut batch = [hyper_os::block::WriteRequest {
             first: 0,
             bytes: &[],
@@ -138,7 +143,7 @@ impl Volume for Fat {
     }
 }
 
-fn metadata(value: hyper_fatfs::Entry) -> Entry {
+fn metadata(value: hyper_fs_fat::Entry) -> Entry {
     Entry {
         name: value.name,
         name_len: value.name_len,
@@ -163,8 +168,8 @@ fn block_error(error: hyper_os::Error) -> BlockError {
     }
 }
 
-fn map_error(error: hyper_fatfs::Error) -> Error {
-    use hyper_fatfs::Error as E;
+fn map_error(error: hyper_fs_fat::Error) -> Error {
+    use hyper_fs_fat::Error as E;
 
     match error {
         E::Allocation => Error::Allocation,
@@ -213,7 +218,7 @@ fn run() -> Result<(), String> {
 
     let block = NativeBlock::from_handle(
         startup
-            .take(hyper_service::filesystem::BLOCK)
+            .take(crate::contracts::filesystem::BLOCK)
             .map_err(show)?,
     );
     let volume = FatVolume::mount_with_clock(
@@ -227,9 +232,9 @@ fn run() -> Result<(), String> {
     .map_err(show)?;
 
     let mut volume = Fat(volume);
-    let completion = hyper_fs_service::serve(&mut startup, &mut volume)?;
+    let completion = worker_transport::serve(&mut startup, &mut volume)?;
     let device = volume.0.into_device().map_err(show)?;
-    hyper_fs_service::return_block(completion, device.block)
+    worker_transport::return_block(completion, device.block)
 }
 
 fn show(error: impl core::fmt::Debug) -> String {
@@ -240,7 +245,7 @@ fn main() -> std::process::ExitCode {
     match run() {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("HypeR fs-fat: {error}");
+            eprintln!("HypeR bootstrap-stage1-fs-fat: {error}");
             std::process::ExitCode::FAILURE
         }
     }

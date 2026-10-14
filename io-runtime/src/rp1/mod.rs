@@ -10,9 +10,9 @@ mod references;
 mod tree;
 
 use crate::firmware;
+use crate::image::guest_fdt::io::PciBar;
 use hyper_os::handle::{DeviceAssignmentAuthorityObject, HandleRef};
 use hyper_os::{Error, Result};
-use hyper_vm_image::guest_fdt::io::PciBar;
 pub use tree::Projection;
 
 /// Reading firmware confers no device authority. The independently claimed PCI

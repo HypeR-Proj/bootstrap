@@ -18,7 +18,8 @@ pub struct Config {
 }
 
 /// An environment path stays attached to the manager's boot filesystem. A
-/// namespace path resolves against the current root and uses the system loader.
+/// namespace path resolves against the current root. Bootstrap workers always
+/// use the delegated static loader; image location cannot select formal DSOs.
 #[derive(Debug, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "lowercase")]
 pub enum WorkerDirectory {

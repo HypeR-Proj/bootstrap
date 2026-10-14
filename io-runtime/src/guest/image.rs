@@ -4,7 +4,7 @@
 //! Admit only native guest architectures; ITB metadata owns image identity.
 
 use super::Configuration;
-use hyper_vm_image::{Architecture, ConfiguredImage, GuestImage};
+use crate::image::{Architecture, ConfiguredImage, GuestImage};
 
 pub fn configure(image: GuestImage, config: &Configuration) -> Result<ConfiguredImage, String> {
     let host = match std::env::consts::ARCH {
@@ -16,7 +16,7 @@ pub fn configure(image: GuestImage, config: &Configuration) -> Result<Configured
     image
         .configure_for_host(config.image_configuration()?, host)
         .map_err(|error| match error {
-            hyper_vm_image::ConfigurationError::ArchitectureMismatch { image, host } => {
+            crate::image::ConfigurationError::ArchitectureMismatch { image, host } => {
                 format!("VM architecture mismatch: ITB {image:?}, host {host:?}")
             }
             other => format!("invalid VM configuration for ITB architecture: {other:?}"),

@@ -13,6 +13,6 @@ fn prefixes_lines_across_arbitrary_read_boundaries() {
         for part in input.chunks(chunk) {
             log.write(&mut output, part).unwrap();
         }
-        assert_eq!(output, b"HypeR IO VM: Linux boot\nHypeR IO VM: \nHypeR IO VM: HypeR I/O: ready\nHypeR IO VM: partial");
+        assert_eq!(output, b"HypeR bootstrap-stage1-io-runtime: IO VM: Linux boot\nHypeR bootstrap-stage1-io-runtime: IO VM: \nHypeR bootstrap-stage1-io-runtime: IO VM: HypeR I/O: ready\nHypeR bootstrap-stage1-io-runtime: IO VM: partial");
     }
 }

@@ -31,14 +31,14 @@ fn exact_board_identity_controls_authorization() {
         ]
     );
     for (client, devices) in clients.iter().zip([
-        hyper_service::io::DISK,
-        hyper_service::io::NETWORK,
-        hyper_service::io::DISK | hyper_service::io::NETWORK,
+        crate::contracts::io::DISK,
+        crate::contracts::io::NETWORK,
+        crate::contracts::io::DISK | crate::contracts::io::NETWORK,
     ]) {
         assert_eq!(client.devices(), devices);
         let wire = client.connection().encode().unwrap();
         assert_eq!(
-            hyper_service::io::decode_connect(&wire),
+            crate::contracts::io::decode_connect(&wire),
             Some(client.connection())
         );
     }
@@ -69,7 +69,7 @@ fn exact_board_identity_controls_authorization() {
 fn native_network_identity_is_reserved_without_a_live_endpoint() {
     assert!(parse("hyper.clients.v3\n0 - - -\n").unwrap().is_empty());
     assert!(
-        hyper_service::io::Connection {
+        crate::contracts::io::Connection {
             client: 0,
             volume: None,
             network: Some("default"),
@@ -82,10 +82,10 @@ fn native_network_identity_is_reserved_without_a_live_endpoint() {
 
 #[test]
 fn capability_records_are_canonical_and_checked() {
-    let mut request = hyper_service::io::encode_connect(7, "vm-seven").unwrap();
+    let mut request = crate::contracts::io::encode_connect(7, "vm-seven").unwrap();
     assert_eq!(
-        hyper_service::io::decode_connect(&request),
-        Some(hyper_service::io::Connection {
+        crate::contracts::io::decode_connect(&request),
+        Some(crate::contracts::io::Connection {
             client: 7,
             volume: Some("vm-seven"),
             network: None,
@@ -93,14 +93,7 @@ fn capability_records_are_canonical_and_checked() {
         })
     );
     request[13] = 1;
-    assert!(hyper_service::io::decode_connect(&request).is_none());
-    assert!(hyper_service::io::encode_memory(u64::MAX - 4095, 4096).is_none());
-    assert!(hyper_service::io::encode_memory(0x4000_0000, 0).is_none());
-    let memory = hyper_service::io::encode_memory(0x4000_0000, 128 * 1024 * 1024).unwrap();
-    assert_eq!(
-        hyper_service::io::decode_memory(&memory),
-        Some((0x4000_0000, 128 * 1024 * 1024))
-    );
+    assert!(crate::contracts::io::decode_connect(&request).is_none());
 }
 
 #[test]

@@ -4,11 +4,12 @@
 //! Worker ownership transactions. Publication belongs to the manager, and a
 //! clean return transfers the original `NativeBlock` only after namespace detach.
 
+use crate::contracts::filesystem;
 use crate::format::Format;
 use crate::{deadline, filesystem_error, show};
 use core::mem::MaybeUninit;
 use hyper_fs_backend::fstab::Entry;
-use hyper_fs_backend::worker::{Program, Source};
+use hyper_fs_backend::worker::Program;
 use hyper_os::{
     block::{NativeBlock, VolumeInfo},
     capability_channel::{CapabilityChannel, CapabilityReceiveSlot},
@@ -22,7 +23,6 @@ use hyper_os::{
         ProcessBuilder, ProcessPhase, ResourceLimits, create_resource_domain, create_task_group,
     },
 };
-use hyper_service::filesystem;
 
 const LIMITS: ResourceLimits = ResourceLimits {
     kernel_memory_bytes: 64 * 1024 * 1024,
@@ -47,13 +47,15 @@ const LIMITS: ResourceLimits = ResourceLimits {
 };
 
 pub(super) struct Worker {
-    child: OwnedHandle<ProcessObject>,
+    pub(super) child: OwnedHandle<ProcessObject>,
     _group: OwnedHandle<TaskGroupObject>,
     _domain: OwnedHandle<ResourceDomainObject>,
-    control: CapabilityChannel,
-    owner: OwnedHandle<ByteChannelObject>,
-    channel: OwnedHandle<ByteChannelObject>,
-    buffer: OwnedHandle<VmoObject>,
+    pub(super) control: CapabilityChannel,
+    pub(super) owner: OwnedHandle<ByteChannelObject>,
+    pub(super) channel: Option<OwnedHandle<ByteChannelObject>>,
+    pub(super) buffer: Option<OwnedHandle<VmoObject>>,
+    pub(super) published: bool,
+    pub(super) mount_id: Option<u64>,
     pub target: String,
     pub format: Format,
     pub read_only: bool,
@@ -61,7 +63,7 @@ pub(super) struct Worker {
 impl Worker {
     pub fn start(
         startup: &Startup<'_>,
-        root: &Directory,
+        _root: &Directory,
         program: Program<File>,
         format: Format,
         geometry: VolumeInfo,
@@ -70,7 +72,7 @@ impl Worker {
     ) -> Result<Self, String> {
         let Program {
             path,
-            source,
+            source: _,
             image,
         } = program;
         let factory = startup.borrow(startup::TASK_FACTORY).map_err(show)?;
@@ -80,36 +82,12 @@ impl Worker {
         )
         .map_err(show)?;
         let group = create_task_group(factory, domain.as_handle_ref()).map_err(show)?;
-        // Recovery providers never consult a mounted system. Providers in
-        // other configured directories belong to the formal environment, even
-        // when their executable is stored on /data or another mounted volume.
-        let system_environment = match source {
-            Source::Environment => None,
-            Source::Namespace => {
-                Some(hyper_service::process::open_environment(root, "/system").map_err(show)?)
-            }
-        };
-        let system_libraries = system_environment
-            .as_ref()
-            .map(hyper_service::process::open_library_directory)
-            .transpose()
+        // Bootstrap workers are always static, even if policy names a file on
+        // another mounted volume. Their executable location does not select a
+        // different userspace loader or a formal library environment.
+        let loader = startup
+            .borrow(crate::contracts::process::CHILD_LOADER)
             .map_err(show)?;
-        let system_loader = system_environment
-            .as_ref()
-            .map(|environment| {
-                hyper_service::process::open_loader(
-                    environment,
-                    hyper_service::process::LoaderKind::Dynamic,
-                )
-            })
-            .transpose()
-            .map_err(show)?;
-        let loader = match &system_loader {
-            Some(file) => file.as_handle_ref(),
-            None => startup
-                .borrow(hyper_service::process::CHILD_LOADER)
-                .map_err(show)?,
-        };
         let builder = ProcessBuilder::create(
             factory,
             group.as_handle_ref(),
@@ -126,13 +104,9 @@ impl Worker {
         ] {
             builder.add_argument(argument).map_err(show)?;
         }
-        let libraries = system_libraries;
-        let libraries = match libraries.as_ref() {
-            Some(directory) => directory.as_handle_ref(),
-            None => startup
-                .borrow(hyper_service::process::CHILD_LIBRARY_DIRECTORY)
-                .map_err(show)?,
-        };
+        let libraries = startup
+            .borrow(crate::contracts::process::CHILD_LIBRARY_DIRECTORY)
+            .map_err(show)?;
         builder
             .add_handle_duplicate(
                 libraries,
@@ -150,11 +124,11 @@ impl Worker {
         for (output, contract) in [
             (
                 hyper_rt::process::stdout().map_err(show)?,
-                hyper_service::stdio::STANDARD_OUTPUT_CONTRACT,
+                crate::contracts::stdio::STANDARD_OUTPUT_CONTRACT,
             ),
             (
                 hyper_rt::process::stderr().map_err(show)?,
-                hyper_service::stdio::STANDARD_ERROR_CONTRACT,
+                crate::contracts::stdio::STANDARD_ERROR_CONTRACT,
             ),
         ] {
             builder
@@ -200,12 +174,8 @@ impl Worker {
         let prepared = (|| {
             let mut bytes = [MaybeUninit::uninit(); 16];
             let mut slots = [
-                CapabilityReceiveSlot::new::<ByteChannelObject>(
-                    Rights::READ.union(Rights::WRITE).union(Rights::WAIT),
-                ),
-                CapabilityReceiveSlot::new::<VmoObject>(
-                    Rights::READ.union(Rights::WRITE).union(Rights::MAP),
-                ),
+                CapabilityReceiveSlot::new::<ByteChannelObject>(filesystem::TRANSPORT_RIGHTS),
+                CapabilityReceiveSlot::new::<VmoObject>(filesystem::BUFFER_RIGHTS),
             ];
             let message = control
                 .receive(deadline()?, &mut bytes, &mut slots)
@@ -239,8 +209,10 @@ impl Worker {
             _domain: domain,
             control,
             owner,
-            channel,
-            buffer,
+            channel: Some(channel),
+            buffer: Some(buffer),
+            published: false,
+            mount_id: None,
             target: entry.target.clone(),
             format,
             read_only: entry.read_only,
@@ -248,20 +220,96 @@ impl Worker {
     }
     pub fn publish(&mut self, root: &Directory, read_only: bool) -> Result<(), String> {
         hyper_os::filesystem::mount(
-            self.channel.as_handle_ref(),
-            self.buffer.as_handle_ref(),
+            self.channel
+                .as_ref()
+                .ok_or("missing filesystem transport")?
+                .as_handle_ref(),
+            self.buffer
+                .as_ref()
+                .ok_or("missing filesystem buffer")?
+                .as_handle_ref(),
             root.as_handle_ref(),
             &self.target,
             read_only,
         )
         .map_err(filesystem_error)?;
+        self.published = true;
+        self.mount_id = Some(
+            root.open_directory(
+                &self.target,
+                hyper_os::fs::DirectoryRights::READ.union(hyper_os::fs::DirectoryRights::INSPECT),
+            )
+            .map_err(show)?
+            .info()
+            .map_err(show)?
+            .location()
+            .mount()
+            .get(),
+        );
         println!(
-            "HypeR fs-backend: {} mounted at {}",
+            "HypeR bootstrap-stage1-fs-backend: {} mounted at {}",
             self.format.name(),
             self.target
         );
         Ok(())
     }
+    pub(super) fn export(
+        self,
+        endpoint: &CapabilityChannel,
+        record: &[u8],
+        block: &mut Option<OwnedHandle<NativeBlockObject>>,
+        server: &mut Option<OwnedHandle<ByteChannelObject>>,
+        shared: &mut Option<OwnedHandle<VmoObject>>,
+    ) -> Result<
+        (
+            OwnedHandle<TaskGroupObject>,
+            OwnedHandle<ResourceDomainObject>,
+        ),
+        String,
+    > {
+        use hyper_os::capability_channel::CapabilityDisposition;
+        let mut child = Some(self.child);
+        let mut channel = self.channel;
+        let mut buffer = self.buffer;
+        let mut offers = [
+            CapabilityDisposition::move_handle(block, RightsOffer::Exact(hyper_os::block::RIGHTS))
+                .map_err(show)?,
+            CapabilityDisposition::move_handle(
+                server,
+                RightsOffer::Exact(filesystem::TRANSPORT_RIGHTS),
+            )
+            .map_err(show)?,
+            CapabilityDisposition::move_handle(
+                shared,
+                RightsOffer::Exact(filesystem::SERVER_BUFFER_RIGHTS),
+            )
+            .map_err(show)?,
+            CapabilityDisposition::move_handle(
+                &mut channel,
+                RightsOffer::Exact(filesystem::TRANSPORT_RIGHTS),
+            )
+            .map_err(show)?,
+            CapabilityDisposition::move_handle(
+                &mut buffer,
+                RightsOffer::Exact(filesystem::BUFFER_RIGHTS),
+            )
+            .map_err(show)?,
+            CapabilityDisposition::move_handle(
+                &mut child,
+                RightsOffer::Exact(hyper_fs_backend::transfer::PROCESS_RIGHTS),
+            )
+            .map_err(show)?,
+        ];
+        crate::contracts::io::send_capabilities(
+            endpoint,
+            record,
+            &mut offers,
+            hyper_os::DEADLINE_INFINITE,
+        )
+        .map_err(show)?;
+        Ok((self._group, self._domain))
+    }
+
     pub fn finish(self) -> Result<NativeBlock, String> {
         self.owner
             .as_byte_channel()

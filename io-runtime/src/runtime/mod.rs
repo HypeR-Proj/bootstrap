@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 mod broker;
+mod handoff;
 mod physical_network;
 mod storage;
 
@@ -14,16 +15,16 @@ use hyper_io_runtime::guest::install::{
     self, Image, InstalledGuest, PHYSICAL_MMIO, RAM_BASE, RAM_BYTES,
 };
 use hyper_io_runtime::guest_log::GuestLog;
+use hyper_io_runtime::image::guest_fdt::{
+    GuestHardwareMetadata,
+    io::{DmaRange, IoDevices, MmioDevice, MmioWindow, SdhciDevice, SdhciRevision},
+};
 use hyper_io_runtime::protocol::control::{Command, MAX_RECORD, Reply, Request, Status};
 use hyper_os::guest_io::Mailbox;
 use hyper_os::handle::{ByteChannelObject, GuestMailboxObject, OwnedHandle, VirtualMachineObject};
 use hyper_os::startup::{self, Startup};
 use hyper_os::wait::{self, ObjectSignals, WaitItem};
 use hyper_os::{device, vm};
-use hyper_vm_image::guest_fdt::{
-    GuestHardwareMetadata,
-    io::{DmaRange, IoDevices, MmioDevice, MmioWindow, SdhciDevice, SdhciRevision},
-};
 use physical_network::PhysicalNetwork;
 use std::io;
 use std::process::ExitCode;
@@ -64,7 +65,7 @@ fn run(
 ) -> Result<()> {
     let environment = hyper_os::fs::Directory::from_handle(
         startup
-            .take(hyper_service::process::ENVIRONMENT_DIRECTORY)
+            .take(crate::contracts::process::ENVIRONMENT_DIRECTORY)
             .map_err(show)?,
     );
     let board = environment
@@ -73,7 +74,7 @@ fn run(
     let config = hyper_io_runtime::config::Config::read(board.into_std())?;
     let storage_policy = hyper_io_runtime::storage_policy::load(&environment)?;
     let mut broker = startup
-        .take_optional(hyper_service::io::BROKER_SERVER)
+        .take_optional(crate::contracts::io::BROKER_SERVER)
         .map_err(show)?
         .map(|endpoint| broker::Broker::load(endpoint, &environment, &storage_policy))
         .transpose()?;
@@ -81,7 +82,7 @@ fn run(
         return Err("I/O broker requires managed storage readiness".into());
     }
     let mut filesystem = startup
-        .take_optional(hyper_service::filesystem::PROVIDER)
+        .take_optional(crate::contracts::filesystem::PROVIDER)
         .map_err(show)?;
     if filesystem.is_some() != readiness.is_some() {
         return Err("managed storage requires a filesystem provider".into());
@@ -277,9 +278,9 @@ fn run(
     // Every fallible operation after installation is inside this result scope;
     // retirement runs even if mailbox creation, start or negotiation fails.
     let mut hardware_worker = None;
+    let mut mailboxes = Vec::new();
     let mut guest_log = GuestLog::default();
     let outcome = (|| {
-        let mut mailboxes = Vec::new();
         if clients.is_empty() {
             mailboxes.push(
                 Mailbox::create(guest.machine.as_handle_ref(), MAILBOX_MMIO, 41).map_err(show)?,
@@ -338,12 +339,47 @@ fn run(
                     .take()
                     .map(hyper_os::capability_channel::CapabilityChannel::from_handle),
             },
-            broker.as_mut(),
             readiness,
         )
     })();
+    if matches!(outcome, Ok(true)) {
+        let native_memory = clients
+            .into_iter()
+            .map(storage::NativeStorage::into_grant)
+            .collect::<Result<Vec<_>>>()?;
+        let mode = if profile.profile != device::Profile::Userspace {
+            hyper_io_runtime::handoff::WorkerMode::None
+        } else if sdhci.is_some() {
+            hyper_io_runtime::handoff::WorkerMode::Sdhci
+        } else {
+            hyper_io_runtime::handoff::WorkerMode::VirtioTest
+        };
+        let endpoint = startup
+            .take_optional(hyper_os::startup::StartupPurpose::new(
+                hyper_io_runtime::handoff::ENDPOINT,
+            ))
+            .map_err(show)?
+            .map(hyper_os::capability_channel::CapabilityChannel::from_handle);
+        // No boot image or firmware projection is needed after installation.
+        drop(image);
+        return handoff::serve(
+            handoff::Owner {
+                guest,
+                log: guest_log,
+                worker: hardware_worker,
+                mode,
+                physical,
+                network: network.into_device(),
+                native_memory,
+                native_mailboxes: mailboxes,
+                broker,
+            },
+            endpoint,
+        );
+    }
+    let outcome = outcome.map(|_| ());
     if let Err(error) = &outcome {
-        eprintln!("HypeR io-runtime: retiring after failure: {error}");
+        eprintln!("HypeR bootstrap-stage1-io-runtime: retiring after failure: {error}");
     }
     let stopped = vm::request_stop(guest.machine.as_handle_ref())
         .map_err(show)
@@ -382,19 +418,18 @@ struct StorageBootstrap<'a> {
     provider: Option<hyper_os::capability_channel::CapabilityChannel>,
 }
 
-/// Negotiates the backend, publishes storage readiness, and services its clients.
+/// Negotiates the backend and publishes boot-storage readiness.
 ///
 /// With Native storage configured, consume the readiness endpoint only after
-/// completing bootstrap mounts and sending the ready record. Until then the outer owner
-/// retains it through failure cleanup. Broker progress shares this loop with
-/// guest console and power events instead of blocking on individual clients.
+/// completing bootstrap mounts and sending the ready record. Until then the
+/// outer owner retains it through failure cleanup. Business client admission
+/// begins in the formal runtime after ownership transfer.
 fn supervise(
     guest: &mut InstalledGuest,
     guest_log: &mut GuestLog,
     storage: StorageBootstrap<'_>,
-    mut broker: Option<&mut broker::Broker>,
     readiness: &mut Option<OwnedHandle<ByteChannelObject>>,
-) -> Result<()> {
+) -> Result<bool> {
     let StorageBootstrap {
         clients,
         mailboxes,
@@ -426,7 +461,7 @@ fn supervise(
     let mut ready = false;
     loop {
         if !pump_guest(guest, guest_log)? {
-            return Ok(());
+            return Ok(false);
         }
         if !ready {
             match mailbox.receive(&mut record) {
@@ -460,25 +495,27 @@ fn supervise(
                             .as_ref()
                             .ok_or("readiness capability already consumed")?;
                         if let Err(error) = writer.as_byte_channel().send(if mounted {
-                            hyper_service::io::READY_MESSAGE
+                            crate::contracts::io::READY_MESSAGE
                         } else {
-                            hyper_service::filesystem::FAILURE_MESSAGE
+                            crate::contracts::filesystem::FAILURE_MESSAGE
                         }) {
                             eprintln!(
-                                "HypeR io-runtime: readiness receiver unavailable: {error:?}"
+                                "HypeR bootstrap-stage1-io-runtime: readiness receiver unavailable: {error:?}"
                             );
                         }
                         drop(readiness.take());
                         if mounted {
-                            println!("HypeR io-runtime: ready; bootstrap mounts complete");
+                            println!(
+                                "HypeR bootstrap-stage1-io-runtime: ready; bootstrap mounts complete"
+                            );
                         } else {
                             eprintln!(
-                                "HypeR io-runtime: required bootstrap mount unavailable; backend remains active"
+                                "HypeR bootstrap-stage1-io-runtime: required bootstrap mount unavailable; backend remains active"
                             );
                         }
                     } else {
                         println!(
-                            "HypeR io-runtime: ready; storage backend idle (no client attached)"
+                            "HypeR bootstrap-stage1-io-runtime: ready; storage backend idle (no client attached)"
                         );
                     }
                     #[cfg(feature = "physical-retirement-probe")]
@@ -491,13 +528,10 @@ fn supervise(
         if !ready {
             check_deadline(startup_deadline)?;
         }
-        if ready
-            && let Some(broker) = broker.as_mut()
-            && broker.service(guest)?
-        {
-            continue;
+        if ready {
+            return Ok(true);
         }
-        let mut items = vec![
+        let items = vec![
             guest.output.wait_item(),
             WaitItem::new(
                 guest.machine.as_handle_ref(),
@@ -510,19 +544,7 @@ fn supervise(
                     .union(ObjectSignals::<GuestMailboxObject>::PEER_CLOSED),
             ),
         ];
-        if ready && let Some(broker) = broker.as_ref() {
-            items.extend(broker.wait_items());
-        }
-        let observed = match wait::wait_many(
-            &items,
-            if ready {
-                broker
-                    .as_ref()
-                    .map_or(hyper_os::DEADLINE_INFINITE, |broker| broker.next_deadline())
-            } else {
-                startup_deadline
-            },
-        ) {
+        let observed = match wait::wait_many(&items, startup_deadline) {
             Ok(observed) => observed,
             Err(hyper_os::Error::Status(hyper_os::Status::TIMED_OUT)) if ready => continue,
             Err(error) => return Err(show(error)),
@@ -557,7 +579,7 @@ fn pump_guest(guest: &mut InstalledGuest, guest_log: &mut GuestLog) -> Result<bo
                     .map_err(show)?
             }
             vm::PowerOperation::SystemOff | vm::PowerOperation::SystemReset => {
-                eprintln!("HypeR io-runtime: backend requested shutdown");
+                eprintln!("HypeR bootstrap-stage1-io-runtime: backend requested shutdown");
                 return Ok(false);
             }
         }
@@ -569,21 +591,21 @@ pub(super) fn main() -> ExitCode {
     let mut startup = match hyper_rt::process::startup() {
         Ok(startup) => startup,
         Err(error) => {
-            eprintln!("HypeR io-runtime: startup failed: {error:?}");
+            eprintln!("HypeR bootstrap-stage1-io-runtime: startup failed: {error:?}");
             return ExitCode::FAILURE;
         }
     };
-    let mut readiness = match startup.take_optional(hyper_service::io::READY) {
+    let mut readiness = match startup.take_optional(crate::contracts::io::READY) {
         Ok(readiness) => readiness,
         Err(error) => {
-            eprintln!("HypeR io-runtime: failed: {error:?}");
+            eprintln!("HypeR bootstrap-stage1-io-runtime: failed: {error:?}");
             return ExitCode::FAILURE;
         }
     };
     let status = match run(&mut startup, &mut readiness) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("HypeR io-runtime: failed: {error}");
+            eprintln!("HypeR bootstrap-stage1-io-runtime: failed: {error}");
             ExitCode::FAILURE
         }
     };

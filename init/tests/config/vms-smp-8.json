@@ -5,7 +5,7 @@
   "virtual-machines": [
     {
       "name": "alpine",
-      "image": "/boot/vm/alpine.itb",
+      "image": "/vm/alpine.itb",
       "autostart": true,
       "configuration": {
         "memory-bytes": 268435456,

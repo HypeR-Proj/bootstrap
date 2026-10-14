@@ -7,12 +7,12 @@ use super::{Result, show};
 use hyper_io_runtime::guest::install::{
     PHYSICAL_NET_IRQ, PHYSICAL_NET_MMIO, PHYSICAL_PCI_IRQ, PHYSICAL_PCI_MMIO, PhysicalAssignment,
 };
+use hyper_io_runtime::image::guest_fdt::io::{MmioDevice, PciHost};
 use hyper_io_runtime::{device_policy::Policy, pci, rp1};
 use hyper_os::device;
 use hyper_os::handle::{
     DeviceAssignmentAuthorityObject, HandleRef, OwnedHandle, PhysicalDeviceObject,
 };
-use hyper_vm_image::guest_fdt::io::{MmioDevice, PciHost};
 
 pub(super) enum PhysicalNetwork {
     Absent,
@@ -27,6 +27,14 @@ pub(super) enum PhysicalNetwork {
 }
 
 impl PhysicalNetwork {
+    pub(super) fn into_device(self) -> Option<OwnedHandle<PhysicalDeviceObject>> {
+        match self {
+            Self::Absent => None,
+            Self::Virtio { device, .. } => Some(device),
+            Self::Pci { assignment, .. } => Some(assignment.into_device()),
+        }
+    }
+
     pub(super) fn claim(
         authority: HandleRef<'_, DeviceAssignmentAuthorityObject>,
         policy: Option<&Policy>,

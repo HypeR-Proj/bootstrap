@@ -104,7 +104,7 @@ pub fn parse(data: &[u8]) -> Result<Vec<Entry>, String> {
         }
         let source = field(parts[0])?;
         let target = field(parts[1])?;
-        if hyper_block::Selector::parse(&source).is_none()
+        if crate::contracts::filesystem::Selector::parse(&source).is_none()
             || !crate::config::absolute_path(&target)
             || target == "/"
         {

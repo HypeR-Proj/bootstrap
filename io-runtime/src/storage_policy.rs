@@ -54,7 +54,7 @@ pub fn parse(bytes: &[u8]) -> Result<Policy, String> {
     for (index, volume) in volumes.iter().enumerate() {
         if volume.client == 0
             || volume.client as usize >= hyper_os::vm::IO_MAX_CLIENTS
-            || hyper_block::Selector::parse(&volume.source).is_none()
+            || crate::contracts::filesystem::Selector::parse(&volume.source).is_none()
             || volumes[..index].iter().any(|old| {
                 old.client == volume.client
                     || (old.source == volume.source

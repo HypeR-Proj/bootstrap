@@ -67,7 +67,7 @@ fn validate_networks(device: Option<&Policy>, networks: Option<&[Network]>) -> R
         }
         _ => return Err("network deployment requires one supported uplink and one bridge".into()),
     };
-    if !hyper_service::io::valid_name(&network.name) {
+    if !crate::contracts::io::valid_name(&network.name) {
         return Err("invalid I/O VM network name".into());
     }
     for interface in [&network.bridge, &network.uplink] {

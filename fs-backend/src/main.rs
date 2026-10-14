@@ -5,10 +5,14 @@
 //! mounted volume; filesystem requests bypass this control plane entirely.
 
 mod manager;
+mod migration;
 mod process;
+
+use hyper_fs_backend::contracts;
 
 use hyper_fs_backend::format;
 
+use crate::contracts::filesystem;
 use core::mem::MaybeUninit;
 use hyper_os::{
     block::NativeBlock,
@@ -17,7 +21,6 @@ use hyper_os::{
     handle::{ByteChannelObject, NativeBlockObject, Rights},
     startup,
 };
-use hyper_service::filesystem;
 
 fn show(error: impl core::fmt::Debug) -> String {
     format!("{error:?}")
@@ -48,13 +51,16 @@ fn deadline() -> Result<u64, String> {
 
 fn run() -> Result<(), String> {
     let mut startup = hyper_rt::process::startup().map_err(show)?;
+    let handoff = startup
+        .take_optional(hyper_fs_backend::transfer::ENDPOINT)
+        .map_err(show)?;
     let attach = CapabilityChannel::from_handle(startup.take(filesystem::ATTACH).map_err(show)?);
     let control =
         CapabilityChannel::from_handle(startup.take(filesystem::CONTROL_SERVER).map_err(show)?);
     let root = Directory::from_handle(startup.take(startup::ROOT_DIRECTORY).map_err(show)?);
     let environment = Directory::from_handle(
         startup
-            .take(hyper_service::process::ENVIRONMENT_DIRECTORY)
+            .take(crate::contracts::process::ENVIRONMENT_DIRECTORY)
             .map_err(show)?,
     );
     let mut record = [MaybeUninit::uninit(); filesystem::ATTACH_BYTES];
@@ -110,17 +116,30 @@ fn run() -> Result<(), String> {
     };
     let readiness = manager.mount_boot();
     if let Err(error) = &readiness {
-        eprintln!("HypeR fs-backend: bootstrap mounts: {error}");
+        eprintln!("HypeR bootstrap-stage1-fs-backend: bootstrap mounts: {error}");
     }
     if let Err(error) = ready.as_byte_channel().send(if readiness.is_ok() {
         filesystem::READY_MESSAGE
     } else {
         filesystem::FAILURE_MESSAGE
     }) {
-        eprintln!("HypeR fs-backend: readiness listener disconnected: {error:?}");
+        eprintln!("HypeR bootstrap-stage1-fs-backend: readiness listener disconnected: {error:?}");
     }
     drop(ready);
-    println!("HypeR fs-backend: mount service ready");
+    println!("HypeR bootstrap-stage1-fs-backend: mount service ready");
+    if readiness.is_ok()
+        && let Some(handoff) = handoff
+    {
+        return migration::export(manager, control, CapabilityChannel::from_handle(handoff));
+    }
+    serve_control(manager, control)
+}
+
+fn serve_control(
+    mut manager: manager::Manager<'_>,
+    control: CapabilityChannel,
+) -> Result<(), String> {
+    let mut record = [MaybeUninit::uninit(); filesystem::ATTACH_BYTES];
     loop {
         let mut slots = [CapabilityReceiveSlot::new::<ByteChannelObject>(
             Rights::READ.union(Rights::WRITE).union(Rights::WAIT),
@@ -139,7 +158,9 @@ fn run() -> Result<(), String> {
             {
                 // A rejected sender transaction installs no capabilities and
                 // must not terminate unrelated mounted filesystem workers.
-                eprintln!("HypeR fs-backend: rejected control message: {status:?}");
+                eprintln!(
+                    "HypeR bootstrap-stage1-fs-backend: rejected control message: {status:?}"
+                );
                 continue;
             }
             Err(error) => return Err(show(error)),
@@ -179,7 +200,7 @@ fn run() -> Result<(), String> {
             response
         };
         if let Err(error) = connection.as_byte_channel().send(response.as_bytes()) {
-            eprintln!("HypeR fs-backend: response lost: {error:?}");
+            eprintln!("HypeR bootstrap-stage1-fs-backend: response lost: {error:?}");
         }
     }
 }
@@ -188,7 +209,7 @@ fn main() -> std::process::ExitCode {
     match run() {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("HypeR fs-backend: {error}");
+            eprintln!("HypeR bootstrap-stage1-fs-backend: {error}");
             std::process::ExitCode::FAILURE
         }
     }

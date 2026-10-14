@@ -5,26 +5,29 @@
 //! formal terminal service. Independent log readers remain mirrored at all times.
 
 mod admission;
+#[path = "../../contracts/mod.rs"]
+mod contracts;
 mod log;
 mod session;
+
+use crate::contracts::console as contract;
 use hyper_os::capability_channel::CapabilityChannel;
 use hyper_os::handle::{ByteChannelObject, ConsoleObject, OwnedHandle};
 use hyper_os::stream;
 use hyper_os::wait::{ObjectSignals, WaitItem, wait_many};
 use hyper_os::{Error, Result, Status};
-use hyper_service::console as contract;
 use log::Log;
 use session::Session;
 use std::collections::VecDeque;
 use std::sync::{
     Arc,
-    atomic::{AtomicU64, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
 };
 
 const INPUT_LIMIT: usize = 4096;
 const SESSION_LIMIT: usize = 16;
 const LOG_LIMIT: usize = 32;
-const _: () = assert!(2 + SESSION_LIMIT + LOG_LIMIT <= hyper_os::wait::MAX_ITEMS);
+const _: () = assert!(3 + SESSION_LIMIT + LOG_LIMIT <= hyper_os::wait::MAX_ITEMS);
 const LOG_MESSAGE_LIMIT: usize = 65_536;
 type Channel = OwnedHandle<ByteChannelObject>;
 fn run() -> Result<()> {
@@ -35,7 +38,13 @@ fn run() -> Result<()> {
     let log_listener = CapabilityChannel::from_handle(startup.take(contract::LOG_CONNECTOR)?);
     let (sender, events, wake) = admission::mailbox()?;
     admission::control(control, sender.clone())?;
-    admission::logs(log_listener, sender.clone())?;
+    let drain = startup.take_optional(
+        hyper_os::startup::StartupPurpose::<ByteChannelObject>::new(0x8008_0014),
+    )?;
+    let stop_logs = drain.as_ref().map(|_| Arc::new(AtomicBool::new(false)));
+    admission::logs(log_listener, sender.clone(), stop_logs.clone())?;
+    let mut draining = false;
+    let mut logs_stopped = false;
     let generation = Arc::new(AtomicU64::new(0));
     let mut stream_workers: Vec<std::thread::JoinHandle<()>> = Vec::with_capacity(4);
     let mut control_epoch = 0;
@@ -55,6 +64,7 @@ fn run() -> Result<()> {
         for _ in 0..32 {
             let Ok(event) = events.try_recv() else { break };
             match event {
+                admission::Event::LogsStopped => logs_stopped = true,
                 admission::Event::Log { name, channel } if logs.len() < LOG_LIMIT => {
                     logs.push(Log::new(name, channel))
                 }
@@ -62,7 +72,8 @@ fn run() -> Result<()> {
                     epoch,
                     access,
                     accepted,
-                } if epoch == generation.load(Ordering::Acquire)
+                } if !draining
+                    && epoch == generation.load(Ordering::Acquire)
                     && sessions.len() < SESSION_LIMIT
                     && access == accepted.access =>
                 {
@@ -76,7 +87,9 @@ fn run() -> Result<()> {
                     output: listener_out,
                 } => {
                     let current = generation.load(Ordering::Acquire);
-                    let result = if epoch == 0 || epoch < control_epoch || current == u64::MAX {
+                    let result = if draining {
+                        Err(Error::Status(Status::BUSY))
+                    } else if epoch == 0 || epoch < control_epoch || current == u64::MAX {
                         Err(Error::Status(Status::INVALID_ARGUMENT))
                     } else if operation == contract::ATTACH && stream_workers.len() > 2 {
                         Err(Error::Status(Status::BUSY))
@@ -118,9 +131,33 @@ fn run() -> Result<()> {
                 _ => {}
             }
         }
+        if let Some(drain) = &drain {
+            let mut command = [0; 32];
+            match drain.as_byte_channel().try_receive(&mut command) {
+                Ok(count)
+                    if &command[..count] == b"HYPER-CONSOLE-DRAIN/1" && sessions.is_empty() =>
+                {
+                    draining = true;
+                    if let Some(stop) = &stop_logs {
+                        stop.store(true, Ordering::Release);
+                    }
+                }
+                Ok(_) => {
+                    drain.as_byte_channel().send(b"HYPER-CONSOLE-BUSY/1")?;
+                }
+                Err(Error::Status(Status::WOULD_BLOCK | Status::PEER_CLOSED)) => {}
+                Err(error) => return Err(error),
+            }
+        }
+        // An unattached raw service is a log mirror only. During adoption the
+        // old and new mirrors may overlap, but only the attached terminal owns
+        // input. Do not consume bytes into an unreachable bootstrap queue.
+        let reads_input = sessions
+            .iter()
+            .any(|session| session.access == stream::ACCESS_READ);
         let mut physical = [0; 256];
         let limit = physical.len().min(INPUT_LIMIT - input.len());
-        if limit != 0 {
+        if reads_input && limit != 0 {
             match console.try_read(&mut physical[..limit]) {
                 Ok(count) => input.extend(&physical[..count]),
                 Err(Error::Status(Status::WOULD_BLOCK)) => {}
@@ -151,14 +188,29 @@ fn run() -> Result<()> {
         }
         sessions.retain(|session| !session.dead);
         logs.retain(|log| !log.dead);
-        let mut wait = Vec::with_capacity(2 + sessions.len() + logs.len());
+        if draining && logs_stopped && logs.is_empty() {
+            if let Some(drain) = &drain {
+                drain.as_byte_channel().send(b"HYPER-CONSOLE-DRAINED/1")?;
+            }
+            // The system supervisor owns retirement, even after the drain fence.
+            loop {
+                std::thread::park();
+            }
+        }
+        let mut wait = Vec::with_capacity(3 + sessions.len() + logs.len());
+        if let Some(drain) = &drain {
+            wait.push(WaitItem::new(
+                drain.as_handle_ref(),
+                ObjectSignals::<ByteChannelObject>::READABLE,
+            ));
+        }
         wait.push(WaitItem::new(
             wake.as_handle_ref(),
             ObjectSignals::<ByteChannelObject>::READABLE,
         ));
         let writable =
             sessions.iter().any(|s| !s.output.is_empty()) || logs.iter().any(Log::has_output);
-        if input.len() < INPUT_LIMIT {
+        if reads_input && input.len() < INPUT_LIMIT {
             let mut signals = ObjectSignals::<ConsoleObject>::READABLE;
             if writable {
                 signals = signals.union(ObjectSignals::<ConsoleObject>::WRITABLE);

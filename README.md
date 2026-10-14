@@ -21,33 +21,38 @@ implementations and the formal executable loader remain in `lib/`.
 
 The required filesystem workers depend on the deployment. For example, an
 EROFS system volume needs `fs-erofs` before `/system` is mounted; `fs-fat` can
-instead be loaded from `/system` when FAT is only used for later data mounts.
-The default image keeps both workers in boot RAM. Stage-1 applies the RAM root's
-`/etc/fstab` only; formal init applies `/system/etc/fstab` after taking supervision
-and switching roots, regardless of the FAT worker's placement.
+be omitted from the boot selection when FAT is only needed after handoff.
+The formal environment deploys its own FAT worker. The default image keeps both
+bootstrap workers in boot RAM and independent formal workers on the system root. Stage-1 applies the RAM root's
+`/etc/fstab` only; formal init applies `/etc/fstab` after taking supervision; stage-1 switches roots before launching it. The boot and formal worker search policies each use their
+own environment directory.
 Source placement does not force every worker into every RAM image. Missing
 workers produce a runtime mount error.
 
 Rust components own their `Cargo.toml` and `component.mk`. They belong to the
 independent [`Cargo.toml`](Cargo.toml) workspace here, with its own lockfile.
-Private service contracts, supervision, image-format and filesystem libraries
-live in `lib/` below this workspace. They use distinct `bootstrap-*` package
-identities and never link formal-system libraries from the repository's top-level
-`lib/`. The resident I/O VM's configuration, image loading and backend wire
-protocols belong to `io-runtime`; bootstrap does not carry the formal VM fleet
+There is no `stage1/lib` tree or private bootstrap library package graph.
+Supervisor and format engines live in their owning executable packages.
+`contracts/` supplies source modules for bootstrap wire formats and capability
+roles; these are compiled as part of the consuming programs. The block parser
+and guest-image loader belong to `io-runtime/src/partition.rs` and `io-runtime/src/image/`.
+The filesystem request loop is owned by `fs-backend/src/worker_transport.rs` and included
+by the format workers. Bootstrap never links formal-system libraries from the
+repository's top-level `lib/`. Its I/O runtime does not carry formal VM fleet
 policy or guest virtio frontend state machines.
 `make app-check`, `make app-test` and `make app-sdk-test` cover both workspaces.
 For a targeted bootstrap test, set `APP_TEST_WORKSPACE=bootstrap/stage1` and
-`APP_TEST_PACKAGE`, for example `bootstrap-fatfs`.
+`APP_TEST_PACKAGE`, for example `hyper-fs-fat`.
 
 Only [the Native substrate](../../stdlib/README.md), Rust std, and third-party
 Cargo dependencies are shared with the formal system. Services communicate via
-the same capability and wire contracts; source ownership does not add IPC or a
-second running service. The small C loader is built by SDK assembly using
+explicit capability and wire contracts. During takeover, replacement processes
+run alongside their predecessors until system init completes the ownership
+transfer and retires the old processes. The small C loader is built by SDK assembly using
 CMake and owns its ELF mapper and stack encoder in `userspace-loader/elf/`.
 
 Every program under `bootstrap/stage1/` must link statically, regardless of
-its deployment profile or whether it is installed in `/boot` or `/system`.
+its deployment profile. Formal providers are separate components from `app/`.
 The SDK linker rejects dynamic executables and shared libraries for these Cargo
 packages and checks the resulting ELF for an interpreter and shared-library
 dependencies. Direct `hyper-cargo build` calls must set `HYPER_LINK_MODE=static`.
@@ -59,8 +64,20 @@ admission workers, without a terminal library or line discipline. Components can
 select a freestanding runtime with the optional sixth `native-rust-app` argument
 `core` (default `std`); separate Cargo outputs prevent feature unification across
 those runtime graphs. The bootstrap loader is
-packaged from the SDK. Composition initially installs them at the RAM root; system init
-later moves that filesystem to `/boot` during `switch_root`. Ordinary applications
-and shared libraries remain under `/system`. See [boot layout](../../docs/boot-layout.md) for
-deployment options, fstab and the transfer of supervision from stage-1 to the
-system environment.
+packaged from the SDK. Composition initially installs bootstrap at the RAM root.
+Stage-1 mounts the independent system volume, switches it to `/` while retaining
+the archive at `/boot`, and only then starts formal init. Provider adoption and
+retirement let formal init stop predecessor processes and detach that archive.
+Ordinary applications and shared libraries live on the independent system root.
+See [boot layout](../../docs/boot-layout.md) for deployment policy, fstab and the
+transfer of supervision.
+
+The init supervisor implementation is local to `init/`. FAT and EROFS engines
+are local to their respective worker programs. These single-consumer modules do
+not form independently linked bootstrap library packages. The
+[handoff contract](../../docs/bootstrap-handoff.md) separates supervision
+adoption from retirement, which is decided and executed by system init.
+
+Bootstrap service diagnostics use the `bootstrap-stage1-` prefix, for example
+`HypeR bootstrap-stage1-init:` and `HypeR bootstrap-stage1-io-runtime:`.
+The formal supervisor runs as `/svc/init` and logs as `HypeR init:`.

@@ -14,7 +14,7 @@ path = "src/main.rs"
 test = false
 bench = false
 [dependencies]
+hyper-os.workspace = true
 hyper-rt.workspace = true
-hyper-service.workspace = true
 [lints]
 workspace = true

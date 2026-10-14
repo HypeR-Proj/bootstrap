@@ -19,7 +19,6 @@ bench = false
 [dependencies]
 hyper-os.workspace = true
 hyper-rt = { version = "=0.0.0", features = ["std"] }
-hyper-service.workspace = true
 
 [lints]
 workspace = true

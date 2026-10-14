@@ -8,3 +8,8 @@ pub mod worker;
 
 pub mod format;
 pub mod fstab;
+
+pub mod transfer;
+
+#[path = "../../contracts/mod.rs"]
+pub mod contracts;

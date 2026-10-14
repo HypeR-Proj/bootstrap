@@ -7,6 +7,7 @@
 use super::{Result, check_deadline, deadline, pump_guest, show};
 use hyper_io_runtime::guest::install::{InstalledGuest, RAM_BASE, RAM_BYTES, SharedGrant};
 use hyper_io_runtime::guest_log::GuestLog;
+use hyper_io_runtime::image::guest_fdt::io::{DmaRange, IoClient, MmioDevice, SharedMemory};
 use hyper_io_runtime::protocol::control::{Command, MAX_RECORD, Reply, Request, Status};
 use hyper_io_runtime::protocol::{BackendOperation, QUEUES, Queue, VERSION_1};
 use hyper_io_runtime::storage_policy::Volume;
@@ -21,7 +22,6 @@ use hyper_os::handle::{
 use hyper_os::memory::{SharedReadMapping, WritableVmo};
 use hyper_os::vm;
 use hyper_os::wait::{self, ObjectSignals, WaitItem};
-use hyper_vm_image::guest_fdt::io::{DmaRange, IoClient, MmioDevice, SharedMemory};
 
 const _: () = assert!(QUEUES == block::QUEUE_COUNT);
 
@@ -38,9 +38,16 @@ pub(super) struct NativeStorage {
     block: Option<NativeBlock>,
     client: u32,
     policy: Option<Volume>,
-    partition: Option<hyper_block::gpt::Partition>,
+    partition: Option<hyper_io_runtime::partition::Partition>,
 }
 impl NativeStorage {
+    pub(super) fn into_grant(self) -> Result<OwnedHandle<GuestMemoryObject>> {
+        if self.block.is_some() {
+            return Err("Native block initiator has not been published".into());
+        }
+        Ok(self.grant)
+    }
+
     pub(super) fn prepare(
         authority: HandleRef<'_, DeviceAssignmentAuthorityObject>,
         root: HandleRef<'_, VmarObject>,
@@ -316,7 +323,7 @@ fn wait_mount(
     mailbox: &Mailbox,
     receiver: &OwnedHandle<ByteChannelObject>,
 ) -> Result<()> {
-    let limit = deadline(hyper_service::io::READY_TIMEOUT_SECONDS)?;
+    let limit = deadline(crate::contracts::io::READY_TIMEOUT_SECONDS)?;
     loop {
         if !pump_guest(guest, guest_log)? {
             return Err("backend stopped during mount".into());

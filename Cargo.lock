@@ -9,60 +9,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ded4057c258ba199e2d26386d3af3780957ecaee6c4ef4041c6b4b8b97c0b06"
 
 [[package]]
-name = "bootstrap-block"
-version = "0.0.0"
-
-[[package]]
-name = "bootstrap-erofs"
-version = "0.0.0"
-dependencies = [
- "hyper-filesystem",
-]
-
-[[package]]
-name = "bootstrap-fatfs"
-version = "0.0.0"
-dependencies = [
- "fatfs",
- "hyper-filesystem",
-]
-
-[[package]]
-name = "bootstrap-fs-service"
-version = "0.0.0"
-dependencies = [
- "bootstrap-service",
- "hyper-filesystem",
- "hyper-os",
-]
-
-[[package]]
-name = "bootstrap-service"
-version = "0.0.0"
-dependencies = [
- "bootstrap-block",
- "hyper-os",
-]
-
-[[package]]
-name = "bootstrap-service-manager"
-version = "0.0.0"
-dependencies = [
- "bootstrap-service",
- "hyper-os",
- "hyper-rt",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "bootstrap-vm-image"
-version = "0.0.0"
-dependencies = [
- "hyper-abi",
-]
-
-[[package]]
 name = "fatfs"
 version = "0.4.0"
 dependencies = [
@@ -78,7 +24,6 @@ version = "0.0.0"
 name = "hyper-console-raw"
 version = "0.0.0"
 dependencies = [
- "bootstrap-service",
  "hyper-os",
  "hyper-rt",
 ]
@@ -87,7 +32,6 @@ dependencies = [
 name = "hyper-fallback-sh"
 version = "0.0.0"
 dependencies = [
- "bootstrap-service",
  "hyper-os",
  "hyper-rt",
  "shlex",
@@ -101,9 +45,6 @@ version = "0.0.0"
 name = "hyper-fs-backend"
 version = "0.0.0"
 dependencies = [
- "bootstrap-block",
- "bootstrap-fs-service",
- "bootstrap-service",
  "hyper-filesystem",
  "hyper-os",
  "hyper-rt",
@@ -115,9 +56,6 @@ dependencies = [
 name = "hyper-fs-erofs"
 version = "0.0.0"
 dependencies = [
- "bootstrap-erofs",
- "bootstrap-fs-service",
- "bootstrap-service",
  "hyper-filesystem",
  "hyper-os",
  "hyper-rt",
@@ -127,29 +65,27 @@ dependencies = [
 name = "hyper-fs-fat"
 version = "0.0.0"
 dependencies = [
- "bootstrap-fatfs",
- "bootstrap-fs-service",
- "bootstrap-service",
+ "fatfs",
  "hyper-filesystem",
  "hyper-os",
  "hyper-rt",
 ]
 
 [[package]]
-name = "hyper-init"
+name = "hyper-bootstrap-stage1-init"
 version = "0.0.0"
 dependencies = [
- "bootstrap-service-manager",
+ "hyper-os",
  "hyper-rt",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
 name = "hyper-io-runtime"
 version = "0.0.0"
 dependencies = [
- "bootstrap-block",
- "bootstrap-service",
- "bootstrap-vm-image",
+ "hyper-abi",
  "hyper-os",
  "hyper-rt",
  "serde",
@@ -160,7 +96,7 @@ dependencies = [
 name = "hyper-mount"
 version = "0.0.0"
 dependencies = [
- "bootstrap-service",
+ "hyper-os",
  "hyper-rt",
 ]
 
@@ -192,7 +128,7 @@ dependencies = [
 name = "hyper-umount"
 version = "0.0.0"
 dependencies = [
- "bootstrap-service",
+ "hyper-os",
  "hyper-rt",
 ]
 

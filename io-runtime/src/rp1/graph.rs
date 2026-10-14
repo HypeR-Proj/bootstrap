@@ -6,8 +6,8 @@ use super::{
     tree::{Node, Projection},
 };
 use crate::firmware::FirmwareNode;
+use crate::image::guest_fdt::io::PciBar;
 use hyper_os::{Error, Result};
-use hyper_vm_image::guest_fdt::io::PciBar;
 
 pub(super) fn project(nodes: &[FirmwareNode], bars: &[PciBar]) -> Result<Projection> {
     let mut clocks = nodes

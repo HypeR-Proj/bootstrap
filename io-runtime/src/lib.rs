@@ -13,10 +13,6 @@ pub mod device_policy;
 
 pub mod deadline;
 
-pub mod admission_policy;
-
-pub mod broker_exchange;
-
 mod firmware;
 
 pub mod sdhci;
@@ -29,3 +25,12 @@ pub mod guest_log;
 
 pub mod guest;
 pub mod protocol;
+
+pub mod handoff;
+
+pub mod image;
+
+pub mod partition;
+
+#[path = "../../contracts/mod.rs"]
+pub mod contracts;

@@ -4,7 +4,7 @@
 //! Discover actual media before authorizing immutable backend ranges.
 
 use super::*;
-use hyper_block::gpt;
+use hyper_io_runtime::partition as gpt;
 use hyper_io_runtime::protocol::block::{self as block_protocol, Command, Disk, Reply};
 use hyper_io_runtime::storage_policy::{
     Policy,
@@ -217,14 +217,17 @@ fn discover(controller: &mut Controller<'_>) -> Result<Catalog> {
             Ok(table) => {
                 if table.degraded {
                     eprintln!(
-                        "HypeR io-runtime: disk {} has only one valid GPT copy",
+                        "HypeR bootstrap-stage1-io-runtime: disk {} has only one valid GPT copy",
                         table.disk_id
                     );
                 }
                 catalog.extend(disk, table.partitions)?;
             }
             Err(gpt::Error::Invalid(reason)) => {
-                eprintln!("HypeR io-runtime: disk {} skipped: {reason}", disk.id);
+                eprintln!(
+                    "HypeR bootstrap-stage1-io-runtime: disk {} skipped: {reason}",
+                    disk.id
+                );
             }
             Err(error) => return Err(format!("GPT discovery: {error:?}")),
         }
