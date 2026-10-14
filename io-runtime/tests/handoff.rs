@@ -20,7 +20,7 @@ fn offer() -> Description {
     Description {
         version: 2,
         memory_base: 0x4000_0000,
-        memory_size: 128 * 1024 * 1024,
+        memory_size: 64 * 1024 * 1024,
         name: "io".into(),
         image: "/vm/io.itb".into(),
         worker: WorkerMode::None,

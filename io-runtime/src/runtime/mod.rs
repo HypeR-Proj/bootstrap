@@ -137,7 +137,7 @@ fn run(
         .map_err(show)?;
     let image = Image::load(config.definition(), image_file.into_std())?;
     if image.plan.memory_size() != RAM_BYTES {
-        return Err("resident I/O VM requires a 128 MiB configuration".into());
+        return Err("resident I/O VM requires a 64 MiB configuration".into());
     }
     let dma =
         device::dma_extent(authority, image.memory.as_handle_ref(), 0, RAM_BYTES).map_err(show)?;

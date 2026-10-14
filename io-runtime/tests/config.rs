@@ -16,7 +16,7 @@ fn board() -> Value {
             "name": "storage.backend-1",
             "image": "/vm/appliances/storage.itb",
             "configuration": {
-                "memory-bytes": 134217728,
+                "memory-bytes": 67108864,
                 "vcpus": 1,
                 "bootargs": "console=ttyAMA0 hyper.role=io",
                 "affinity": [{"vcpu": 0, "cpus": [1, 3]}]
@@ -47,7 +47,7 @@ fn one_node_supplies_image_identity_runtime_policy_and_device() {
     let definition = config.definition();
     assert_eq!(definition.name, "storage.backend-1");
     assert_eq!(definition.image, "/vm/appliances/storage.itb");
-    assert_eq!(definition.configuration.memory_bytes, 128 * 1024 * 1024);
+    assert_eq!(definition.configuration.memory_bytes, 64 * 1024 * 1024);
     assert_eq!(definition.configuration.vcpus, 1);
     assert_eq!(
         definition.configuration.bootargs,
@@ -109,7 +109,7 @@ fn wrong_owner_or_unrelated_guest_lifecycle_fields_are_rejected() {
 
 #[test]
 fn resident_layout_and_resource_limits_are_checked_before_loading() {
-    for memory in [64 * 1024 * 1024, 256 * 1024 * 1024] {
+    for memory in [128 * 1024 * 1024, 256 * 1024 * 1024] {
         let mut source = board();
         source["io-vm"]["configuration"]["memory-bytes"] = json!(memory);
         assert!(parse(&source).is_err());

@@ -17,6 +17,9 @@ mod read_cache;
 use affinity::Affinity;
 use serde::Deserialize;
 
+/// RAM budget for the resident, multi-client I/O appliance.
+pub const RAM_BYTES: u64 = 64 * 1024 * 1024;
+
 /// The resident appliance identity; guest fleet policy belongs to system init.
 pub struct Definition {
     pub name: String,

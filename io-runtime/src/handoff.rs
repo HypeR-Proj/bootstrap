@@ -91,7 +91,7 @@ impl Description {
     pub fn validate(&self) -> Result<(), &'static str> {
         if self.version != 2
             || self.memory_base != 0x4000_0000
-            || self.memory_size != 128 * 1024 * 1024
+            || self.memory_size != crate::guest::RAM_BYTES
             || self.name.is_empty()
             || self.name.len() > 64
             || self.image.len() > 1024

@@ -9,7 +9,6 @@ use serde::Deserialize;
 use std::io::Read;
 
 const MAX_BOARD_BYTES: usize = 1024 * 1024;
-const RESIDENT_RAM_BYTES: u64 = 128 * 1024 * 1024;
 
 // The image builder validates the complete board schema. This service owns the
 // I/O node; unrelated disk, deployment-file and business-VM fields stay opaque.
@@ -163,10 +162,10 @@ impl Config {
         {
             return Err("I/O VM image must be a canonical /vm/...itb bootstrap path".into());
         }
-        if definition.configuration.memory_bytes != RESIDENT_RAM_BYTES
+        if definition.configuration.memory_bytes != crate::guest::RAM_BYTES
             || definition.configuration.vcpus != 1
         {
-            return Err("resident I/O VM requires 128 MiB and one vCPU".into());
+            return Err("resident I/O VM requires 64 MiB and one vCPU".into());
         }
         Ok(Self {
             definition,
