@@ -5,11 +5,11 @@ use hyper_os::{Error, Result, vm};
 pub const DEVICE_COOKIE: u64 = 1;
 const APERTURE_BYTES: u64 = 65536;
 
-pub(super) fn line_asserted(status: u32, signal_enable: u32) -> bool {
+pub(crate) fn line_asserted(status: u32, signal_enable: u32) -> bool {
     status & signal_enable != 0
 }
 
-pub(super) fn request_offset(request: vm::MmioRequest, base: u64) -> Result<u64> {
+pub(crate) fn request_offset(request: vm::MmioRequest, base: u64) -> Result<u64> {
     let offset = request
         .address
         .checked_sub(base)

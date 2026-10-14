@@ -10,9 +10,9 @@ use serde::{Deserialize, Serialize};
 pub const ENDPOINT: u32 = 0x8008_0010;
 pub const DESCRIPTION: u32 = 0x8008_0012;
 pub const READY: u32 = 0x8008_0020;
-pub const DESCRIBE_MESSAGE: &[u8] = b"HYPER-IO-DESCRIBE/1";
-pub const ADOPT_MESSAGE: &[u8] = b"HYPER-IO-ADOPT/1";
-pub const READY_MESSAGE: &[u8] = b"HYPER-IO-READY/1";
+pub const DESCRIBE_MESSAGE: &[u8] = b"HYPER-IO-DESCRIBE/2";
+pub const ADOPT_MESSAGE: &[u8] = b"HYPER-IO-ADOPT/2";
+pub const READY_MESSAGE: &[u8] = b"HYPER-IO-READY/2";
 pub const MAX_DESCRIPTION: usize = 32 * 1024;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -27,6 +27,8 @@ pub enum Kind {
     Cpu,
     Serial,
     SerialBuffer,
+    OwnMemory,
+    HotplugInterrupt,
     StorageDevice,
     NetworkDevice,
     Broker,
@@ -50,6 +52,8 @@ impl Kind {
                 .union(Rights::INSPECT)
                 .union(Rights::START),
             Self::Serial => owner.union(Rights::READ).union(Rights::WAIT),
+            Self::OwnMemory => owner.union(Rights::READ).union(Rights::WRITE),
+            Self::HotplugInterrupt => owner.union(Rights::WRITE),
             Self::SerialBuffer => owner.union(Rights::READ).union(Rights::MAP),
             Self::StorageDevice | Self::NetworkDevice => owner.union(Rights::INSPECT),
             Self::Broker => owner.union(Rights::READ).union(Rights::WAIT),
@@ -75,6 +79,8 @@ pub struct Description {
     pub image: String,
     pub worker: WorkerMode,
     pub cpus: usize,
+    pub memory_base: u64,
+    pub memory_size: u64,
     pub native: usize,
     pub network: bool,
     pub broker: bool,
@@ -83,7 +89,9 @@ pub struct Description {
 }
 impl Description {
     pub fn validate(&self) -> Result<(), &'static str> {
-        if self.version != 1
+        if self.version != 2
+            || self.memory_base != 0x4000_0000
+            || self.memory_size != 128 * 1024 * 1024
             || self.name.is_empty()
             || self.name.len() > 64
             || self.image.len() > 1024
@@ -96,7 +104,13 @@ impl Description {
         }
         let mut kinds = vec![Kind::Machine];
         kinds.extend(std::iter::repeat_n(Kind::Cpu, self.cpus));
-        kinds.extend([Kind::Serial, Kind::SerialBuffer, Kind::StorageDevice]);
+        kinds.extend([
+            Kind::Serial,
+            Kind::SerialBuffer,
+            Kind::OwnMemory,
+            Kind::HotplugInterrupt,
+            Kind::StorageDevice,
+        ]);
         if self.network {
             kinds.push(Kind::NetworkDevice);
         }
@@ -152,26 +166,27 @@ impl Description {
 }
 
 /// Cursor and prefix state are captured after the last predecessor read.
-pub fn encode_commit(cursor: u64, line_start: bool) -> Vec<u8> {
+pub fn encode_commit(cursor: u64, line_start: bool, pcie: &crate::pcie::RootPort) -> Vec<u8> {
     let mut bytes = ADOPT_MESSAGE.to_vec();
     bytes.extend(cursor.to_le_bytes());
     bytes.push(u8::from(line_start));
+    bytes.extend(pcie.state());
     bytes
 }
-pub fn decode_commit(bytes: &[u8]) -> Result<(u64, bool), &'static str> {
+pub fn decode_commit(bytes: &[u8]) -> Result<(u64, bool, crate::pcie::RootPort), &'static str> {
     let suffix = bytes
         .strip_prefix(ADOPT_MESSAGE)
         .ok_or("invalid I/O adoption record")?;
-    let [a, b, c, d, e, f, g, h, line] = suffix else {
-        return Err("invalid I/O adoption length");
-    };
-    if *line > 1 {
-        return Err("invalid I/O log state");
+    if suffix.len() != 9 + crate::pcie::STATE_BYTES || suffix[8] > 1 {
+        return Err("invalid I/O adoption length or log state");
     }
-    Ok((
-        u64::from_le_bytes([*a, *b, *c, *d, *e, *f, *g, *h]),
-        *line != 0,
-    ))
+    let cursor = u64::from_le_bytes(suffix[..8].try_into().map_err(|_| "invalid I/O cursor")?);
+    let pcie =
+        crate::pcie::RootPort::from_state(&suffix[9..]).ok_or("invalid PCIe handoff state")?;
+    if pcie.present() {
+        return Err("bootstrap PCIe slot is not empty");
+    }
+    Ok((cursor, suffix[8] != 0, pcie))
 }
 
 #[cfg(test)]

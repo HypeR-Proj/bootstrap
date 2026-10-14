@@ -9,6 +9,8 @@ fn offer() -> Description {
         Kind::Cpu,
         Kind::Serial,
         Kind::SerialBuffer,
+        Kind::OwnMemory,
+        Kind::HotplugInterrupt,
         Kind::StorageDevice,
         Kind::Broker,
         Kind::NativeMemory,
@@ -16,7 +18,9 @@ fn offer() -> Description {
         Kind::BrokerMailbox,
     ];
     Description {
-        version: 1,
+        version: 2,
+        memory_base: 0x4000_0000,
+        memory_size: 128 * 1024 * 1024,
         name: "io".into(),
         image: "/vm/io.itb".into(),
         worker: WorkerMode::None,
@@ -69,7 +73,7 @@ fn malformed_or_attenuated_inventories_are_rejected_before_live_receive() {
         assert!(missing_rights.validate().is_err());
     }
     let mut wrong_version = original.clone();
-    wrong_version.version = 2;
+    wrong_version.version = 1;
     assert!(wrong_version.validate().is_err());
     let mut unavailable_worker = original.clone();
     unavailable_worker.worker = WorkerMode::Sdhci;
@@ -133,8 +137,9 @@ fn unknown_fields_are_rejected_at_every_handoff_record_level()
 fn partial_serial_line_and_full_width_cursor_survive_commit_encoding() {
     for cursor in [0, 1, u32::MAX as u64, u64::MAX] {
         for line_start in [true, false] {
-            let record = encode_commit(cursor, line_start);
-            assert_eq!(decode_commit(&record), Ok((cursor, line_start)));
+            let pcie = crate::pcie::RootPort::default();
+            let record = encode_commit(cursor, line_start, &pcie);
+            assert_eq!(decode_commit(&record), Ok((cursor, line_start, pcie)));
             for length in 0..record.len() {
                 assert!(decode_commit(&record[..length]).is_err());
             }
@@ -142,8 +147,20 @@ fn partial_serial_line_and_full_width_cursor_survive_commit_encoding() {
             extra.push(0);
             assert!(decode_commit(&extra).is_err());
             let mut bad_boolean = record;
-            *bad_boolean.last_mut().unwrap() = 2;
+            bad_boolean[ADOPT_MESSAGE.len() + 8] = 2;
             assert!(decode_commit(&bad_boolean).is_err());
         }
     }
+}
+
+#[test]
+fn committed_empty_slot_retains_guest_controls_and_rejects_an_inserted_device() {
+    let mut port = crate::pcie::RootPort::default();
+    assert_eq!(port.write(4, 2, 6), Some(()));
+    assert_eq!(port.write(0x58, 2, 0x1028), Some(()));
+    assert_eq!(port.write(0x20, 4, 0x0ab0_0aa0), Some(()));
+    let record = encode_commit(99, false, &port);
+    assert_eq!(decode_commit(&record), Ok((99, false, port.clone())));
+    port.set_present(true);
+    assert!(decode_commit(&encode_commit(99, false, &port)).is_err());
 }

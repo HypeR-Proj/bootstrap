@@ -17,10 +17,11 @@ use hyper_io_runtime::guest::install::{
 use hyper_io_runtime::guest_log::GuestLog;
 use hyper_io_runtime::image::guest_fdt::{
     GuestHardwareMetadata,
-    io::{DmaRange, IoDevices, MmioDevice, MmioWindow, SdhciDevice, SdhciRevision},
+    io::{DmaRange, HotplugPci, IoDevices, MmioDevice, MmioWindow, SdhciDevice, SdhciRevision},
 };
+use hyper_io_runtime::pcie;
 use hyper_io_runtime::protocol::control::{Command, MAX_RECORD, Reply, Request, Status};
-use hyper_os::guest_io::Mailbox;
+use hyper_os::guest_io::{Interrupt, Mailbox};
 use hyper_os::handle::{ByteChannelObject, GuestMailboxObject, OwnedHandle, VirtualMachineObject};
 use hyper_os::startup::{self, Startup};
 use hyper_os::wait::{self, ObjectSignals, WaitItem};
@@ -218,6 +219,18 @@ fn run(
             image.device_tree(
                 gic_version,
                 IoDevices {
+                    hotplug_pci: Some(HotplugPci {
+                        ecam: MmioWindow {
+                            base: pcie::ECAM_BASE,
+                            size: pcie::ECAM_BYTES,
+                        },
+                        memory: MmioWindow {
+                            base: pcie::MEMORY_BASE,
+                            size: pcie::MEMORY_BYTES,
+                        },
+                        hotplug_irq: pcie::HOTPLUG_IRQ,
+                        endpoint_irq: pcie::ENDPOINT_IRQ,
+                    }),
                     clients: &descriptions,
                     virtio: storage_node,
                     network: network_node,
@@ -231,6 +244,18 @@ fn run(
             image.device_tree(
                 gic_version,
                 IoDevices {
+                    hotplug_pci: Some(HotplugPci {
+                        ecam: MmioWindow {
+                            base: pcie::ECAM_BASE,
+                            size: pcie::ECAM_BYTES,
+                        },
+                        memory: MmioWindow {
+                            base: pcie::MEMORY_BASE,
+                            size: pcie::MEMORY_BYTES,
+                        },
+                        hotplug_irq: pcie::HOTPLUG_IRQ,
+                        endpoint_irq: pcie::ENDPOINT_IRQ,
+                    }),
                     clients: &[],
                     virtio: storage_node,
                     network: network_node,
@@ -274,13 +299,28 @@ fn run(
         &assignments,
         0xd000_0000,
     )?;
-    drop(grant);
     // Every fallible operation after installation is inside this result scope;
     // retirement runs even if mailbox creation, start or negotiation fails.
     let mut hardware_worker = None;
     let mut mailboxes = Vec::new();
     let mut guest_log = GuestLog::default();
+    let mut hotplug_interrupt = None;
     let outcome = (|| {
+        for (base, length, cookie) in [
+            (pcie::ECAM_BASE, pcie::ECAM_BYTES, pcie::ECAM_COOKIE),
+            (pcie::MEMORY_BASE, pcie::MEMORY_BYTES, pcie::MEMORY_COOKIE),
+        ] {
+            vm::register_mmio(
+                guest.machine.as_handle_ref(),
+                base,
+                length,
+                core::num::NonZeroU64::new(cookie).ok_or("invalid PCIe cookie")?,
+            )
+            .map_err(show)?;
+        }
+        hotplug_interrupt = Some(
+            Interrupt::create(guest.machine.as_handle_ref(), pcie::HOTPLUG_IRQ).map_err(show)?,
+        );
         if clients.is_empty() {
             mailboxes.push(
                 Mailbox::create(guest.machine.as_handle_ref(), MAILBOX_MMIO, 41).map_err(show)?,
@@ -302,7 +342,7 @@ fn run(
             broker.install(&guest)?;
         }
         if profile.profile == device::Profile::Userspace {
-            use hyper_io_runtime::sdhci::worker;
+            use hyper_io_runtime::mmio as worker;
             vm::register_mmio(
                 guest.machine.as_handle_ref(),
                 PHYSICAL_MMIO,
@@ -324,6 +364,9 @@ fn run(
                     return Err("missing userspace physical device driver".into());
                 }
             });
+        }
+        if hardware_worker.is_none() {
+            hardware_worker = Some(hyper_io_runtime::mmio::start_bus(&guest).map_err(show)?);
         }
         #[cfg(feature = "userspace-device-test")]
         println!("DEVICE-TEST: worker prepared");
@@ -365,6 +408,11 @@ fn run(
         return handoff::serve(
             handoff::Owner {
                 guest,
+                own_memory: grant,
+                hotplug_interrupt: hotplug_interrupt
+                    .ok_or("missing PCIe interrupt")?
+                    .into_handle(),
+                pcie: pcie::RootPort::default(),
                 log: guest_log,
                 worker: hardware_worker,
                 mode,

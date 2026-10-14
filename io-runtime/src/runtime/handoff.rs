@@ -8,7 +8,7 @@ use super::{Result, deadline, drain, pump_guest, show};
 use hyper_io_runtime::guest::install::InstalledGuest;
 use hyper_io_runtime::guest_log::GuestLog;
 use hyper_io_runtime::handoff::{self, Description, Kind, Slot, WorkerMode};
-use hyper_io_runtime::sdhci::worker::{self, Worker};
+use hyper_io_runtime::mmio::{self as worker, Worker};
 use hyper_os::capability_channel::{CapabilityChannel, CapabilityDisposition};
 use hyper_os::guest_io::Mailbox;
 use hyper_os::handle::*;
@@ -20,6 +20,9 @@ use std::sync::Arc;
 
 pub(super) struct Owner {
     pub guest: InstalledGuest,
+    pub own_memory: OwnedHandle<GuestMemoryObject>,
+    pub hotplug_interrupt: OwnedHandle<GuestInterruptObject>,
+    pub pcie: hyper_io_runtime::pcie::RootPort,
     pub log: GuestLog,
     pub worker: Option<Worker>,
     pub mode: WorkerMode,
@@ -43,6 +46,11 @@ impl Owner {
             kind: Kind::SerialBuffer,
             rights: virtual_serial::BUFFER_RIGHTS.bits(),
         });
+        slots.push(slot(Kind::OwnMemory, self.own_memory.as_handle_ref())?);
+        slots.push(slot(
+            Kind::HotplugInterrupt,
+            self.hotplug_interrupt.as_handle_ref(),
+        )?);
         slots.push(slot(Kind::StorageDevice, self.physical.as_handle_ref())?);
         if let Some(network) = &self.network {
             slots.push(slot(Kind::NetworkDevice, network.as_handle_ref())?);
@@ -69,7 +77,9 @@ impl Owner {
             }
         }
         let description = Description {
-            version: 1,
+            version: 2,
+            memory_base: hyper_io_runtime::guest::install::RAM_BASE,
+            memory_size: hyper_io_runtime::guest::install::RAM_BYTES,
             name: self.guest.name().into(),
             image: self.guest.image().into(),
             worker: self.mode,
@@ -194,10 +204,11 @@ pub(super) fn serve(mut owner: Owner, mut endpoint: Option<CapabilityChannel>) -
             continue;
         };
         // First stop the physical MMIO/IRQ consumer; Arc owners become unique.
-        if let Some(worker) = owner.worker.take()
-            && let Err(error) = worker.quiesce()
-        {
-            return owner.stop(Err(show(error)));
+        if let Some(worker) = owner.worker.take() {
+            match worker.quiesce() {
+                Ok(pcie) => owner.pcie = pcie,
+                Err(error) => return owner.stop(Err(show(error))),
+            }
         }
         let Some((description, _)) = &prepared else {
             // No live resource is touched if metadata could not be prepared.
@@ -241,6 +252,8 @@ struct Transfer {
     serial: Option<OwnedHandle<VirtualSerialObject>>,
     ring: Option<OwnedHandle<VmoObject>>,
     original_output: Option<Output>,
+    own_memory: Option<OwnedHandle<GuestMemoryObject>>,
+    hotplug_interrupt: Option<OwnedHandle<GuestInterruptObject>>,
     physical: Option<OwnedHandle<PhysicalDeviceObject>>,
     network: Option<OwnedHandle<PhysicalDeviceObject>>,
     broker: Option<OwnedHandle<CapabilityChannelObject>>,
@@ -276,6 +289,9 @@ fn transfer(
     }
     let Owner {
         guest,
+        own_memory,
+        hotplug_interrupt,
+        pcie,
         log,
         mode,
         physical,
@@ -303,6 +319,9 @@ fn transfer(
                     cpus,
                     output,
                 },
+                own_memory,
+                hotplug_interrupt,
+                pcie,
                 log,
                 mode,
                 physical,
@@ -344,6 +363,8 @@ fn transfer(
         serial: Some(paused.serial),
         ring: Some(paused.memory),
         original_output: Some(output),
+        own_memory: Some(own_memory),
+        hotplug_interrupt: Some(hotplug_interrupt),
         physical: Some(physical),
         network,
         broker,
@@ -354,7 +375,7 @@ fn transfer(
             .collect(),
         broker_mailboxes,
     };
-    let bytes = handoff::encode_commit(cursor, log.line_start());
+    let bytes = handoff::encode_commit(cursor, log.line_start(), &pcie);
     let limit = deadline(10)?;
     let mut index = 0;
     let mut dispositions = Vec::new();
@@ -378,6 +399,8 @@ fn transfer(
     }
     offer!(&mut state.serial);
     offer!(&mut state.ring);
+    offer!(&mut state.own_memory);
+    offer!(&mut state.hotplug_interrupt);
     offer!(&mut state.physical);
     if state.network.is_some() {
         offer!(&mut state.network);
@@ -445,6 +468,12 @@ fn transfer(
                 .take()
                 .ok_or("missing original output mapping")?,
         },
+        own_memory: state.own_memory.take().ok_or("missing own RAM")?,
+        hotplug_interrupt: state
+            .hotplug_interrupt
+            .take()
+            .ok_or("missing hotplug interrupt")?,
+        pcie,
         log,
         mode,
         worker: None,
@@ -490,14 +519,18 @@ fn transfer(
 }
 fn resume_worker(owner: &Owner) -> Result<Option<Worker>> {
     match owner.mode {
-        WorkerMode::None => Ok(None),
-        WorkerMode::Sdhci => worker::resume(&owner.physical, &owner.guest)
+        WorkerMode::None => worker::resume_bus(&owner.guest, owner.pcie.clone())
+            .map(Some)
+            .map_err(show),
+        WorkerMode::Sdhci => worker::resume(&owner.physical, &owner.guest, owner.pcie.clone())
             .map(Some)
             .map_err(show),
         #[cfg(feature = "userspace-device-test")]
-        WorkerMode::VirtioTest => worker::resume_virtio_test(&owner.physical, &owner.guest)
-            .map(Some)
-            .map_err(show),
+        WorkerMode::VirtioTest => {
+            worker::resume_virtio_test(&owner.physical, &owner.guest, owner.pcie.clone())
+                .map(Some)
+                .map_err(show)
+        }
         #[cfg(not(feature = "userspace-device-test"))]
         WorkerMode::VirtioTest => Err("test device consumer unavailable".into()),
     }

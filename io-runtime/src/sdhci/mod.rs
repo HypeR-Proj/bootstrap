@@ -6,9 +6,7 @@
 
 mod graph;
 #[cfg(any(test, all(target_os = "hyper", target_arch = "aarch64")))]
-mod registers;
-#[cfg(all(target_os = "hyper", target_arch = "aarch64"))]
-pub mod worker;
+pub(crate) mod registers;
 
 use crate::firmware::{self, FirmwareNode, MmioResource};
 use hyper_os::device::{self, BundleEntry, FirmwareIdentity};

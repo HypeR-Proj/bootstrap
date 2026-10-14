@@ -6,6 +6,8 @@
 use super::{Aarch64LinuxBoot, Builder, Error, hex_node_name};
 
 mod firmware;
+mod hotplug_pci;
+pub use hotplug_pci::HotplugPci;
 mod pci;
 mod sdhci;
 pub use firmware::{FIRMWARE_PHANDLE_BASE, FIRMWARE_PHANDLE_LIMIT, FirmwareNode, FirmwareProperty};
@@ -63,6 +65,7 @@ pub struct IoClient {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct IoDevices<'ranges> {
+    pub hotplug_pci: Option<HotplugPci>,
     pub clients: &'ranges [IoClient],
     pub virtio: Option<MmioDevice>,
     /// Second virtio transport: a guest network frontend or assigned uplink.
@@ -81,6 +84,7 @@ pub struct IoDevices<'ranges> {
 impl IoDevices<'_> {
     pub const fn empty() -> Self {
         Self {
+            hotplug_pci: None,
             clients: &[],
             virtio: None,
             network: None,
@@ -94,6 +98,9 @@ impl IoDevices<'_> {
     }
 
     pub(super) fn validate(self, boot: Aarch64LinuxBoot<'_>) -> Result<(), Error> {
+        if let Some(pci) = self.hotplug_pci {
+            pci.validate(self, boot)?;
+        }
         if let Some(sdhci) = self.sdhci {
             sdhci.validate(self, boot)?;
         }
@@ -451,6 +458,9 @@ impl IoDevices<'_> {
     ) -> Result<(), Error> {
         let mut name = [0u8; 64];
         self.append_clients(builder)?;
+        if let Some(pci) = self.hotplug_pci {
+            pci.append(builder)?;
+        }
         if let Some(shared) = self.shared_memory {
             // Reserved memory alone is insufficient: Linux needs struct pages
             // for vm_insert_page/GUP/scatterlists. Advertise this second RAM

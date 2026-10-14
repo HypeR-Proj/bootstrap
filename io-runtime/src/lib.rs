@@ -15,11 +15,14 @@ pub mod deadline;
 
 mod firmware;
 
+#[cfg(all(target_os = "hyper", target_arch = "aarch64"))]
+pub mod mmio;
 pub mod sdhci;
 
 pub mod rp1;
 
 pub mod pci;
+pub mod pcie;
 
 pub mod guest_log;
 
