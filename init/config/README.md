@@ -20,7 +20,7 @@ The system payload supplies `/boot`, `/tmp` and `/data` mountpoint directories.
 Stage-1 reads this policy from its own `/etc/hyper/init.json`:
 
 ```json
-{"system-root":"/system","put-old":"/boot","system-init":"/svc/init"}
+{"system-root":"/system","put-old":"/boot","system-init":"/svc/component-manager"}
 ```
 
 Stage-1 provisionally switches the namespace before starting system init.

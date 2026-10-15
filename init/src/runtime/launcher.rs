@@ -145,7 +145,8 @@ impl ServiceLauncher {
                 StartFailure::Committed(error) => (error, true),
             };
             let message = format!(
-                "HypeR bootstrap-stage1-init: service '{}' {} failed: {error:?}\n",
+                "{}service '{}' {} failed: {error:?}\n",
+                crate::logging::prefix("init"),
                 service.name(),
                 if committed { "loader" } else { "start" }
             );

@@ -23,3 +23,6 @@ pub mod contracts;
 #[cfg(test)]
 #[path = "../../../../tests/app/native-init-payload.rs"]
 mod native_payload;
+
+#[path = "../../logging.rs"]
+pub mod logging;

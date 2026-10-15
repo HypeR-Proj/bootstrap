@@ -4,6 +4,9 @@
 //! Resident mount manager. Exclusive media moves to one format worker per
 //! mounted volume; filesystem requests bypass this control plane entirely.
 
+#[path = "../../logging.rs"]
+mod logging;
+
 mod manager;
 mod migration;
 mod process;
@@ -116,17 +119,26 @@ fn run() -> Result<(), String> {
     };
     let readiness = manager.mount_boot();
     if let Err(error) = &readiness {
-        eprintln!("HypeR bootstrap-stage1-fs-backend: bootstrap mounts: {error}");
+        eprintln!(
+            "{}bootstrap mounts: {error}",
+            crate::logging::prefix("fs-backend")
+        );
     }
     if let Err(error) = ready.as_byte_channel().send(if readiness.is_ok() {
         filesystem::READY_MESSAGE
     } else {
         filesystem::FAILURE_MESSAGE
     }) {
-        eprintln!("HypeR bootstrap-stage1-fs-backend: readiness listener disconnected: {error:?}");
+        eprintln!(
+            "{}readiness listener disconnected: {error:?}",
+            crate::logging::prefix("fs-backend")
+        );
     }
     drop(ready);
-    println!("HypeR bootstrap-stage1-fs-backend: mount service ready");
+    println!(
+        "{}mount service ready",
+        crate::logging::prefix("fs-backend")
+    );
     if readiness.is_ok()
         && let Some(handoff) = handoff
     {
@@ -159,7 +171,8 @@ fn serve_control(
                 // A rejected sender transaction installs no capabilities and
                 // must not terminate unrelated mounted filesystem workers.
                 eprintln!(
-                    "HypeR bootstrap-stage1-fs-backend: rejected control message: {status:?}"
+                    "{}rejected control message: {status:?}",
+                    crate::logging::prefix("fs-backend")
                 );
                 continue;
             }
@@ -200,7 +213,10 @@ fn serve_control(
             response
         };
         if let Err(error) = connection.as_byte_channel().send(response.as_bytes()) {
-            eprintln!("HypeR bootstrap-stage1-fs-backend: response lost: {error:?}");
+            eprintln!(
+                "{}response lost: {error:?}",
+                crate::logging::prefix("fs-backend")
+            );
         }
     }
 }
@@ -209,7 +225,7 @@ fn main() -> std::process::ExitCode {
     match run() {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("HypeR bootstrap-stage1-fs-backend: {error}");
+            eprintln!("{}{error}", crate::logging::prefix("fs-backend"));
             std::process::ExitCode::FAILURE
         }
     }

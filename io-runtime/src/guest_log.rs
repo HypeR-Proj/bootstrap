@@ -26,7 +26,7 @@ impl GuestLog {
     pub fn write(&mut self, output: &mut impl Write, bytes: &[u8]) -> io::Result<()> {
         for part in bytes.split_inclusive(|byte| *byte == b'\n') {
             if self.line_start {
-                output.write_all(b"HypeR bootstrap-stage1-io-runtime: IO VM: ")?;
+                write!(output, "{}IO VM: ", crate::logging::prefix("io-runtime"))?;
                 self.line_start = false;
             }
             output.write_all(part)?;

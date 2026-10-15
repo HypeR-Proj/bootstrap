@@ -5,7 +5,7 @@
 
 This directory owns programs needed in the RAM filesystem to bring up storage,
 mount the system volume and provide a basic recovery shell. Ordinary tools and
-the system init live in [`app/`](../../app/README.md); reusable service
+the system init live in [`svc/`](../../svc/README.md); reusable service
 implementations and the formal executable loader remain in `lib/`.
 
 | Component | Responsibility |
@@ -52,7 +52,7 @@ transfer and retires the old processes. The small C loader is built by SDK assem
 CMake and owns its ELF mapper and stack encoder in `userspace-loader/elf/`.
 
 Every program under `bootstrap/stage1/` must link statically, regardless of
-its deployment profile. Formal providers are separate components from `app/`.
+its deployment profile. Formal providers are separate components from `svc/`.
 The SDK linker rejects dynamic executables and shared libraries for these Cargo
 packages and checks the resulting ELF for an interpreter and shared-library
 dependencies. Direct `hyper-cargo build` calls must set `HYPER_LINK_MODE=static`.
@@ -78,6 +78,14 @@ not form independently linked bootstrap library packages. The
 [handoff contract](../../docs/bootstrap-handoff.md) separates supervision
 adoption from retirement, which is decided and executed by system init.
 
-Bootstrap service diagnostics use the `bootstrap-stage1-` prefix, for example
-`HypeR bootstrap-stage1-init:` and `HypeR bootstrap-stage1-io-runtime:`.
-The formal supervisor runs as `/svc/init` and logs as `HypeR init:`.
+Bootstrap service diagnostics use a boot timestamp, phase and service header,
+for example `[    1.234567][HypeR bootstrap stage 1][io-runtime] IO VM: ...`.
+Timestamps use HypeR's monotonic boot clock and the kernel's seconds/microseconds
+format, captured before log buffering. An unavailable clock is shown as
+`[    ?.??????]` without suppressing the diagnostic.
+The formal root runs as `/svc/component-manager` and logs under that name.
+It prepares `system-startup` to validate the domain inventory before accepting
+ownership. Stage1's candidate group includes both processes, so rejection stops
+both before rolling back. Component routes, journal policy and the finite formal
+startup sequence are not interpreted by stage1. See
+[component management](../../docs/services.md).

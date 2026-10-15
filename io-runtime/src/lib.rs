@@ -37,3 +37,6 @@ pub mod partition;
 
 #[path = "../../contracts/mod.rs"]
 pub mod contracts;
+
+#[path = "../../logging.rs"]
+pub mod logging;

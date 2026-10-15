@@ -217,7 +217,8 @@ fn discover(controller: &mut Controller<'_>) -> Result<Catalog> {
             Ok(table) => {
                 if table.degraded {
                     eprintln!(
-                        "HypeR bootstrap-stage1-io-runtime: disk {} has only one valid GPT copy",
+                        "{}disk {} has only one valid GPT copy",
+                        crate::logging::prefix("io-runtime"),
                         table.disk_id
                     );
                 }
@@ -225,7 +226,8 @@ fn discover(controller: &mut Controller<'_>) -> Result<Catalog> {
             }
             Err(gpt::Error::Invalid(reason)) => {
                 eprintln!(
-                    "HypeR bootstrap-stage1-io-runtime: disk {} skipped: {reason}",
+                    "{}disk {} skipped: {reason}",
+                    crate::logging::prefix("io-runtime"),
                     disk.id
                 );
             }

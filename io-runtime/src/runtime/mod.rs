@@ -427,7 +427,10 @@ fn run(
     }
     let outcome = outcome.map(|_| ());
     if let Err(error) = &outcome {
-        eprintln!("HypeR bootstrap-stage1-io-runtime: retiring after failure: {error}");
+        eprintln!(
+            "{}retiring after failure: {error}",
+            crate::logging::prefix("io-runtime")
+        );
     }
     let stopped = vm::request_stop(guest.machine.as_handle_ref())
         .map_err(show)
@@ -548,22 +551,26 @@ fn supervise(
                             crate::contracts::filesystem::FAILURE_MESSAGE
                         }) {
                             eprintln!(
-                                "HypeR bootstrap-stage1-io-runtime: readiness receiver unavailable: {error:?}"
+                                "{}readiness receiver unavailable: {error:?}",
+                                crate::logging::prefix("io-runtime")
                             );
                         }
                         drop(readiness.take());
                         if mounted {
                             println!(
-                                "HypeR bootstrap-stage1-io-runtime: ready; bootstrap mounts complete"
+                                "{}ready; bootstrap mounts complete",
+                                crate::logging::prefix("io-runtime")
                             );
                         } else {
                             eprintln!(
-                                "HypeR bootstrap-stage1-io-runtime: required bootstrap mount unavailable; backend remains active"
+                                "{}required bootstrap mount unavailable; backend remains active",
+                                crate::logging::prefix("io-runtime")
                             );
                         }
                     } else {
                         println!(
-                            "HypeR bootstrap-stage1-io-runtime: ready; storage backend idle (no client attached)"
+                            "{}ready; storage backend idle (no client attached)",
+                            crate::logging::prefix("io-runtime")
                         );
                     }
                     #[cfg(feature = "physical-retirement-probe")]
@@ -627,7 +634,10 @@ fn pump_guest(guest: &mut InstalledGuest, guest_log: &mut GuestLog) -> Result<bo
                     .map_err(show)?
             }
             vm::PowerOperation::SystemOff | vm::PowerOperation::SystemReset => {
-                eprintln!("HypeR bootstrap-stage1-io-runtime: backend requested shutdown");
+                eprintln!(
+                    "{}backend requested shutdown",
+                    crate::logging::prefix("io-runtime")
+                );
                 return Ok(false);
             }
         }
@@ -639,21 +649,24 @@ pub(super) fn main() -> ExitCode {
     let mut startup = match hyper_rt::process::startup() {
         Ok(startup) => startup,
         Err(error) => {
-            eprintln!("HypeR bootstrap-stage1-io-runtime: startup failed: {error:?}");
+            eprintln!(
+                "{}startup failed: {error:?}",
+                crate::logging::prefix("io-runtime")
+            );
             return ExitCode::FAILURE;
         }
     };
     let mut readiness = match startup.take_optional(crate::contracts::io::READY) {
         Ok(readiness) => readiness,
         Err(error) => {
-            eprintln!("HypeR bootstrap-stage1-io-runtime: failed: {error:?}");
+            eprintln!("{}failed: {error:?}", crate::logging::prefix("io-runtime"));
             return ExitCode::FAILURE;
         }
     };
     let status = match run(&mut startup, &mut readiness) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("HypeR bootstrap-stage1-io-runtime: failed: {error}");
+            eprintln!("{}failed: {error}", crate::logging::prefix("io-runtime"));
             ExitCode::FAILURE
         }
     };

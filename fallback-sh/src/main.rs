@@ -3,6 +3,9 @@
 
 //! Recovery shell and capability-scoped foreground command launcher.
 
+#[path = "../../logging.rs"]
+mod logging;
+
 #[path = "../../contracts/mod.rs"]
 mod contracts;
 mod launch;
@@ -24,7 +27,6 @@ use std::io::{Read, Write};
 use std::process::ExitCode;
 
 const INPUT_CHUNK_BYTES: usize = 1;
-const READY_MESSAGE: &[u8] = b"HypeR bootstrap-stage1-fallback-sh: recovery console ready\r\n";
 const PROMPT: &[u8] = b"fallback-sh$ ";
 const WORKING_DIRECTORY_RIGHTS: DirectoryRights = DirectoryRights::READ
     .union(DirectoryRights::WRITE)
@@ -88,7 +90,13 @@ fn run(startup: &mut Startup<'_>) -> Result<ExitCode, Error> {
         filesystem_control,
     };
 
-    write_terminal(READY_MESSAGE)?;
+    write_terminal(
+        format!(
+            "{}recovery console ready\r\n",
+            logging::prefix("fallback-sh")
+        )
+        .as_bytes(),
+    )?;
     write_terminal(PROMPT)?;
 
     let mut editor = Editor::default();

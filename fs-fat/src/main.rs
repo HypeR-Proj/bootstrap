@@ -3,6 +3,9 @@
 
 //! FAT media adapter; the common service owns all IPC and mount machinery.
 
+#[path = "../../logging.rs"]
+mod logging;
+
 #[path = "../../contracts/mod.rs"]
 mod contracts;
 #[path = "../../fs-backend/src/worker_transport.rs"]
@@ -245,7 +248,7 @@ fn main() -> std::process::ExitCode {
     match run() {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("HypeR bootstrap-stage1-fs-fat: {error}");
+            eprintln!("{}{error}", crate::logging::prefix("fs-fat"));
             std::process::ExitCode::FAILURE
         }
     }

@@ -19,7 +19,8 @@ pub(super) fn export(
 ) -> Result<(), String> {
     if let Err(error) = prepare(&manager, &endpoint) {
         eprintln!(
-            "HypeR bootstrap-stage1-fs-backend: adoption preparation failed; bootstrap mounts retained: {error}"
+            "{}adoption preparation failed; bootstrap mounts retained: {error}",
+            crate::logging::prefix("fs-backend")
         );
         // No live authority has moved. Peer loss or malformed preparation may
         // not retire healthy workers or close the mounted filesystem channels.

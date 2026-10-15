@@ -77,7 +77,7 @@ fn try_transfer(
         executable.as_handle_ref(),
         loader.as_handle_ref(),
     )?;
-    builder.set_name("init")?;
+    builder.set_name(next.system_init.rsplit('/').next().unwrap_or("system-root"))?;
     builder.add_argument(&next.system_init)?;
     builder.set_memory_lock_allowed(true)?;
     builder.add_handle_duplicate(
@@ -89,13 +89,21 @@ fn try_transfer(
             Rights::READ
                 .union(Rights::EXECUTE)
                 .union(Rights::INSPECT)
-                .union(Rights::DUPLICATE),
+                .union(Rights::PROTECT)
+                .union(Rights::DUPLICATE)
+                .union(Rights::TRANSFER),
         ),
     )?;
     builder.add_handle_duplicate(
         a.library_directory.as_handle_ref(),
         startup::DYNAMIC_LIBRARY_DIRECTORY.as_raw(),
-        RightsOffer::Exact(Rights::READ.union(Rights::EXECUTE).union(Rights::PROTECT)),
+        RightsOffer::Exact(
+            Rights::READ
+                .union(Rights::EXECUTE)
+                .union(Rights::PROTECT)
+                .union(Rights::DUPLICATE)
+                .union(Rights::TRANSFER),
+        ),
     )?;
     builder.add_handle_duplicate(
         a.console.as_handle_ref(),
@@ -110,15 +118,42 @@ fn try_transfer(
     builder.add_handle_duplicate(
         snapshot.as_handle_ref(),
         metadata::SNAPSHOT.as_raw(),
-        RightsOffer::Exact(Rights::READ.union(Rights::INSPECT)),
+        RightsOffer::Exact(Rights::READ.union(Rights::INSPECT).union(Rights::TRANSFER)),
     )?;
     builder
         .add_handle_move(
             receiver.into_handle(),
             ENDPOINT.as_raw(),
-            RightsOffer::Exact(Rights::WAIT.union(Rights::READ)),
+            RightsOffer::Exact(Rights::WAIT.union(Rights::READ).union(Rights::TRANSFER)),
         )
         .map_err(|failure| failure.into_parts().0)?;
+    // The receiver may delegate policy to a child in its staging group. These
+    // preparation capabilities cannot stop or adopt any predecessor service.
+    builder.add_handle_duplicate(
+        a.factory.as_handle_ref(),
+        startup::TASK_FACTORY.as_raw(),
+        RightsOffer::Exact(Rights::CREATE_PROCESS.union(Rights::LOCK_MEMORY)),
+    )?;
+    builder.add_handle_duplicate(
+        candidate_group.as_handle_ref(),
+        startup::TASK_GROUP.as_raw(),
+        RightsOffer::Exact(Rights::TASK_GROUP_ATTACH_PROCESS),
+    )?;
+    builder.add_handle_duplicate(
+        a.domain.as_handle_ref(),
+        startup::RESOURCE_DOMAIN.as_raw(),
+        RightsOffer::Exact(Rights::RESOURCE_DOMAIN_SPONSOR),
+    )?;
+    builder.add_handle_duplicate(
+        loader.as_handle_ref(),
+        startup::CHILD_LOADER.as_raw(),
+        RightsOffer::Exact(
+            Rights::READ
+                .union(Rights::EXECUTE)
+                .union(Rights::DUPLICATE)
+                .union(Rights::TRANSFER),
+        ),
+    )?;
     builder.seal()?;
     let process = builder.start().map_err(|failure| match failure {
         hyper_os::task::StartFailure::Rejected { error, .. }
@@ -138,23 +173,17 @@ fn try_transfer(
         Ok(true) => {
             // Process owners have moved. No further fallible operation here can
             // turn success into a rollback; an ACK is deliberately unnecessary.
-            let _ = runtime
-                .launcher
-                .authorities
-                .console
-                .as_emergency_console()
-                .write_all(
-                    b"HypeR bootstrap-stage1-init: core supervision transferred; awaiting system retirement\n",
-                );
+            // Console presentation now belongs to the successor. Do not emit
+            // a direct success message after transferring its controller.
             Ok(true)
         }
         other => {
-            // The staging group contains only init. Never stop the core
-            // group on failed preparation, timeout, or peer loss.
-            let _ = process.as_process_supervisor().request_stop();
+            // Include preparation children. Never stop the predecessor group
+            // on failed preparation, timeout, or peer loss.
+            let _ = candidate_group.as_task_group().request_stop();
             let join_deadline = hyper_os::time::deadline_after(Duration::from_secs(5))?.as_raw();
-            process
-                .as_process_supervisor()
+            candidate_group
+                .as_task_group()
                 .wait_terminated(join_deadline)?;
             other
         }

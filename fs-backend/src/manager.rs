@@ -78,8 +78,10 @@ impl Manager<'_> {
             }
             if let Err(error) = self.mount(entry) {
                 eprintln!(
-                    "HypeR bootstrap-stage1-fs-backend: {} on {}: {error}",
-                    entry.source, entry.target
+                    "{}{} on {}: {error}",
+                    crate::logging::prefix("fs-backend"),
+                    entry.source,
+                    entry.target
                 );
                 if entry.required {
                     failures.push(format!("{}: {error}", entry.target));
@@ -191,7 +193,8 @@ impl Manager<'_> {
                     Ok(block) => volume.block = Some(block),
                     Err(cleanup) => {
                         eprintln!(
-                            "HypeR bootstrap-stage1-fs-backend: rejected mount cleanup: {cleanup}"
+                            "{}rejected mount cleanup: {cleanup}",
+                            crate::logging::prefix("fs-backend")
                         )
                     }
                 }

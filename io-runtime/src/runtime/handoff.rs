@@ -137,7 +137,8 @@ pub(super) fn serve(mut owner: Owner, mut endpoint: Option<CapabilityChannel>) -
         Ok(prepared) => prepared,
         Err(error) => {
             eprintln!(
-                "HypeR bootstrap-stage1-io-runtime: cannot prepare adoption; retaining backend: {error}"
+                "{}cannot prepare adoption; retaining backend: {error}",
+                crate::logging::prefix("io-runtime")
             );
             endpoint = None;
             None
@@ -165,7 +166,10 @@ pub(super) fn serve(mut owner: Owner, mut endpoint: Option<CapabilityChannel>) -
                 Ok(()) => described = true,
                 Err(hyper_os::Error::Status(hyper_os::Status::WOULD_BLOCK)) => (),
                 Err(error) => {
-                    eprintln!("HypeR bootstrap-stage1-io-runtime: adoption unavailable: {error:?}");
+                    eprintln!(
+                        "{}adoption unavailable: {error:?}",
+                        crate::logging::prefix("io-runtime")
+                    );
                     endpoint = None;
                 }
             }
@@ -217,7 +221,8 @@ pub(super) fn serve(mut owner: Owner, mut endpoint: Option<CapabilityChannel>) -
         match transfer(owner, description, &channel) {
             Ok(None) => {
                 println!(
-                    "HypeR bootstrap-stage1-io-runtime: running backend transferred to system"
+                    "{}running backend transferred to system",
+                    crate::logging::prefix("io-runtime")
                 );
                 // Adoption is not retirement. Keep this process quiet until
                 // system init explicitly stops and joins its bootstrap group.
@@ -332,7 +337,8 @@ fn transfer(
                 worker: None,
             };
             eprintln!(
-                "HypeR bootstrap-stage1-io-runtime: cannot pause output for adoption: {error:?}"
+                "{}cannot pause output for adoption: {error:?}",
+                crate::logging::prefix("io-runtime")
             );
             owner.worker = resume_worker(&owner)?;
             return Ok(Some(owner));
@@ -442,7 +448,8 @@ fn transfer(
         return Ok(None);
     }
     eprintln!(
-        "HypeR bootstrap-stage1-io-runtime: adoption rejected; retaining running backend: {result:?}"
+        "{}adoption rejected; retaining running backend: {result:?}",
+        crate::logging::prefix("io-runtime")
     );
     let mut owner = Owner {
         guest: InstalledGuest {

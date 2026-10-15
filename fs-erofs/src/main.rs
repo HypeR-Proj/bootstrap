@@ -3,6 +3,9 @@
 
 //! Read-only EROFS worker; common filesystem service code owns IPC and mounts.
 
+#[path = "../../logging.rs"]
+mod logging;
+
 #[path = "../../contracts/mod.rs"]
 mod contracts;
 #[path = "../../fs-backend/src/worker_transport.rs"]
@@ -169,7 +172,7 @@ fn main() -> std::process::ExitCode {
     match run() {
         Ok(()) => std::process::ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("HypeR bootstrap-stage1-fs-erofs: {error}");
+            eprintln!("{}{error}", crate::logging::prefix("fs-erofs"));
             std::process::ExitCode::FAILURE
         }
     }

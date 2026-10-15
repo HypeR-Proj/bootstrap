@@ -90,9 +90,15 @@ impl Image {
         {
             return Err("I/O deployment requires 64 or 128 MiB AArch64 reference images".into());
         }
-        println!("HypeR bootstrap-stage1-io-runtime: validated {path}, allocating guest RAM");
+        println!(
+            "{}validated {path}, allocating guest RAM",
+            crate::logging::prefix("io-runtime")
+        );
         let memory = WritableVmo::create_contiguous(plan.memory_size()).map_err(show)?;
-        println!("HypeR bootstrap-stage1-io-runtime: copying {path} kernel");
+        println!(
+            "{}copying {path} kernel",
+            crate::logging::prefix("io-runtime")
+        );
         copy_payload(&source, &memory, image.kernel)?;
         if let Some(payload) = image.initramfs {
             copy_payload(&source, &memory, payload)?;

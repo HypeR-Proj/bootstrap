@@ -27,23 +27,13 @@ pub(super) enum StorageFailure {
 }
 
 impl StorageFailure {
-    pub(super) const fn diagnostic(&self) -> &'static [u8] {
+    pub(super) const fn diagnostic(&self) -> &'static str {
         match self {
-            Self::ProviderUnavailable => {
-                b"HypeR bootstrap-stage1-init: storage unavailable: provider unavailable\n"
-            }
-            Self::ChannelClosed => {
-                b"HypeR bootstrap-stage1-init: storage unavailable: readiness channel closed\n"
-            }
-            Self::InvalidReply => {
-                b"HypeR bootstrap-stage1-init: storage unavailable: invalid readiness reply\n"
-            }
-            Self::MountUnavailable => {
-                b"HypeR bootstrap-stage1-init: storage unavailable: required mount failed\n"
-            }
-            Self::TimedOut => {
-                b"HypeR bootstrap-stage1-init: storage unavailable: readiness timed out\n"
-            }
+            Self::ProviderUnavailable => "storage unavailable: provider unavailable\n",
+            Self::ChannelClosed => "storage unavailable: readiness channel closed\n",
+            Self::InvalidReply => "storage unavailable: invalid readiness reply\n",
+            Self::MountUnavailable => "storage unavailable: required mount failed\n",
+            Self::TimedOut => "storage unavailable: readiness timed out\n",
         }
     }
 }

@@ -8,11 +8,7 @@ use hyper_os::handle::{ConsoleObject, OwnedHandle, ProcessObject};
 
 use super::LaunchError;
 
-pub(super) fn report_operation_failure(
-    output: &OwnedHandle<ConsoleObject>,
-    operation: &str,
-    error: &impl core::fmt::Debug,
-) {
+pub(super) fn write(output: &OwnedHandle<ConsoleObject>, message: core::fmt::Arguments<'_>) {
     use core::fmt::Write;
 
     struct Writer<'a>(&'a OwnedHandle<ConsoleObject>);
@@ -24,10 +20,19 @@ pub(super) fn report_operation_failure(
                 .map_err(|_| core::fmt::Error)
         }
     }
-    let _ = writeln!(
+    let _ = write!(
         Writer(output),
-        "HypeR bootstrap-stage1-init: {operation}: {error:?}"
+        "{}{message}",
+        crate::logging::prefix("init")
     );
+}
+
+pub(super) fn report_operation_failure(
+    output: &OwnedHandle<ConsoleObject>,
+    operation: &str,
+    error: &impl core::fmt::Debug,
+) {
+    write(output, format_args!("{operation}: {error:?}\n"));
 }
 
 pub(super) fn report_service_launch_failure(
@@ -36,7 +41,7 @@ pub(super) fn report_service_launch_failure(
     error: &LaunchError,
 ) {
     let console = output.as_emergency_console();
-    let _ = console.write_all(b"HypeR bootstrap-stage1-init: failed to launch service '");
+    write(output, format_args!("failed to launch service '"));
     let _ = console.write_all(service.as_bytes());
     let _ = console.write_all(b"': ");
     let _ = console.write_all(error.reason());
@@ -51,9 +56,9 @@ pub(super) fn report_service_termination(
 ) {
     let console = output.as_emergency_console();
     if critical {
-        let _ = console.write_all(b"HypeR bootstrap-stage1-init: critical service '");
+        write(output, format_args!("critical service '"));
     } else {
-        let _ = console.write_all(b"HypeR bootstrap-stage1-init: service '");
+        write(output, format_args!("service '"));
     }
     let _ = console.write_all(service.as_bytes());
     let _ = console.write_all(b"' terminated: ");

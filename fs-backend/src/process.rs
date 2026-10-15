@@ -247,7 +247,8 @@ impl Worker {
             .get(),
         );
         println!(
-            "HypeR bootstrap-stage1-fs-backend: {} mounted at {}",
+            "{}{} mounted at {}",
+            crate::logging::prefix("fs-backend"),
             self.format.name(),
             self.target
         );

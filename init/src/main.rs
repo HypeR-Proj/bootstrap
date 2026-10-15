@@ -13,7 +13,12 @@ fn main() -> ExitCode {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             use std::io::Write;
-            let _ = std::io::stderr().write_all(error.diagnostic());
+            let _ = write!(
+                std::io::stderr(),
+                "{}{}",
+                hyper_bootstrap_stage1_init::logging::prefix("init"),
+                error.diagnostic()
+            );
             ExitCode::FAILURE
         }
     }

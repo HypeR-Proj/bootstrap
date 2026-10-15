@@ -40,26 +40,20 @@ pub fn run(startup: &mut Startup<'_>) -> Result<(), Error> {
     let system_init = match root_switch::SystemInitConfig::load() {
         Ok(next) => next,
         Err(_) => {
-            let _ = runtime
-                .launcher
-                .authorities
-                .console
-                .as_emergency_console()
-                .write_all(
-                    b"HypeR bootstrap-stage1-init: invalid system-init configuration; retaining recovery services\n",
-                );
+            report::write(
+                &runtime.launcher.authorities.console,
+                format_args!("invalid system-init configuration; retaining recovery services\n"),
+            );
             None
         }
     };
     runtime
         .launch_validated_graph(&manifest, &plan, system_init.as_ref())
         .map_err(|error| {
-            let _ = runtime
-                .launcher
-                .authorities
-                .console
-                .as_emergency_console()
-                .write_all(error.diagnostic());
+            report::write(
+                &runtime.launcher.authorities.console,
+                format_args!("{}", error.diagnostic()),
+            );
             Error::Bootstrap
         })
 }
@@ -71,13 +65,11 @@ pub enum Error {
 }
 
 impl Error {
-    pub const fn diagnostic(&self) -> &'static [u8] {
+    pub const fn diagnostic(&self) -> &'static str {
         match self {
-            Self::Bootstrap => b"HypeR bootstrap-stage1-init: bootstrap failed\n",
-            Self::OperatingSystem => {
-                b"HypeR bootstrap-stage1-init: startup capability operation failed\n"
-            }
-            Self::Source => b"HypeR bootstrap-stage1-init: invalid service manifest source\n",
+            Self::Bootstrap => "bootstrap failed\n",
+            Self::OperatingSystem => "startup capability operation failed\n",
+            Self::Source => "invalid service manifest source\n",
         }
     }
 }
@@ -265,12 +257,10 @@ impl Runtime {
                     &self.launcher.authorities.console,
                 )?;
                 if let StorageReadiness::Unavailable(reason) = readiness {
-                    let _ = self
-                        .launcher
-                        .authorities
-                        .console
-                        .as_emergency_console()
-                        .write_all(reason.diagnostic());
+                    report::write(
+                        &self.launcher.authorities.console,
+                        format_args!("{}", reason.diagnostic()),
+                    );
                     storage_available = false;
                 }
             }
@@ -298,19 +288,21 @@ impl Runtime {
                 self.rollback_system_root()?;
             }
             self.launcher.authorities.io_broker_client.take();
-            let _ = self.launcher.authorities.console.as_emergency_console().write_all(
-                b"HypeR bootstrap-stage1-init: system init unavailable; retaining core supervision and recovery shell\n");
+            report::write(
+                &self.launcher.authorities.console,
+                format_args!(
+                    "system init unavailable; retaining core supervision and recovery shell\n"
+                ),
+            );
             self.recovery_console(manifest)
         })();
         match result {
             Ok(()) => Ok(()),
             Err(error) => {
-                let _ = self
-                    .launcher
-                    .authorities
-                    .console
-                    .as_emergency_console()
-                    .write_all(error.diagnostic());
+                report::write(
+                    &self.launcher.authorities.console,
+                    format_args!("{}", error.diagnostic()),
+                );
                 // Recovery owns input only before a committed handoff. Do not
                 // tear down healthy storage merely because another service failed.
                 self.recovery_console(manifest)
@@ -340,14 +332,10 @@ impl Runtime {
                 ));
                 self.root_transition = Some(transition);
                 self.system_root_mount = mount;
-                let _ = self
-                    .launcher
-                    .authorities
-                    .console
-                    .as_emergency_console()
-                    .write_all(
-                        b"HypeR bootstrap-stage1-init: provisional system root active; preparing successor\n",
-                    );
+                report::write(
+                    &self.launcher.authorities.console,
+                    format_args!("provisional system root active; preparing successor\n"),
+                );
                 Ok(true)
             }
             Err(error) if supervision::service_unavailable(&error) => {
@@ -371,13 +359,9 @@ impl Runtime {
                 .boot_libraries
                 .take()
                 .ok_or(LaunchError::AuthorityConsumed)?;
-            let _ = self
-                .launcher
-                .authorities
-                .console
-                .as_emergency_console()
-                .write_all(
-                b"HypeR bootstrap-stage1-init: system handoff rejected; bootstrap root restored\n",
+            report::write(
+                &self.launcher.authorities.console,
+                format_args!("system handoff rejected; bootstrap root restored\n"),
             );
         }
         Ok(())
@@ -423,34 +407,18 @@ impl LaunchError {
         }
     }
 
-    const fn diagnostic(&self) -> &'static [u8] {
+    const fn diagnostic(&self) -> &'static str {
         match self {
-            Self::AuthorityConsumed => {
-                b"HypeR bootstrap-stage1-init: service authority was already consumed\n"
-            }
-            Self::CriticalServiceTerminated => {
-                b"HypeR bootstrap-stage1-init: critical service terminated\n"
-            }
-            Self::InvalidPlan => b"HypeR bootstrap-stage1-init: invalid launch plan\n",
-            Self::OperatingSystem => {
-                b"HypeR bootstrap-stage1-init: service launch operation failed\n"
-            }
-            Self::RequiredServiceUnavailable => {
-                b"HypeR bootstrap-stage1-init: startup provider unavailable\n"
-            }
-            Self::ServiceUnavailable => {
-                b"HypeR bootstrap-stage1-init: service image or resources unavailable\n"
-            }
-            Self::UnsupportedAuthority => {
-                b"HypeR bootstrap-stage1-init: unsupported service authority\n"
-            }
-            Self::UnsupportedRestartPolicy => {
-                b"HypeR bootstrap-stage1-init: unsupported restart policy\n"
-            }
-            Self::UnsupportedSupervisionGraph => {
-                b"HypeR bootstrap-stage1-init: unsupported critical-service supervision graph\n"
-            }
-            Self::WaitTimedOut => b"HypeR bootstrap-stage1-init: service handshake timed out\n",
+            Self::AuthorityConsumed => "service authority was already consumed\n",
+            Self::CriticalServiceTerminated => "critical service terminated\n",
+            Self::InvalidPlan => "invalid launch plan\n",
+            Self::OperatingSystem => "service launch operation failed\n",
+            Self::RequiredServiceUnavailable => "startup provider unavailable\n",
+            Self::ServiceUnavailable => "service image or resources unavailable\n",
+            Self::UnsupportedAuthority => "unsupported service authority\n",
+            Self::UnsupportedRestartPolicy => "unsupported restart policy\n",
+            Self::UnsupportedSupervisionGraph => "unsupported critical-service supervision graph\n",
+            Self::WaitTimedOut => "service handshake timed out\n",
         }
     }
 

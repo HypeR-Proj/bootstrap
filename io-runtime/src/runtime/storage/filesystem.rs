@@ -38,8 +38,10 @@ pub(super) fn attach(
             return Err("bound block capacity differs from discovered partition".into());
         }
         println!(
-            "HypeR bootstrap-stage1-io-runtime: Native volume {}: {} sectors",
-            policy.source, volume.sectors
+            "{}Native volume {}: {} sectors",
+            crate::logging::prefix("io-runtime"),
+            policy.source,
+            volume.sectors
         );
         let request = filesystem::encode_attach(partition.id, &partition.label, volume)
             .ok_or("invalid named volume geometry")?;
