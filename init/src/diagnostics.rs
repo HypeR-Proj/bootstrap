@@ -3,47 +3,38 @@
 
 //! Standard integer formatting and rendering of supervised Process termination details.
 
+use core::fmt;
 use hyper_os::task::{ProcessInfo, ProcessTermination};
 
-/// Writes the reason-specific portion of one typed Process lifecycle report.
-///
-/// The callback receives short borrowed fragments so the init supervisor can
-/// report through its recovery Console.
-pub fn write_process_termination(info: ProcessInfo, mut write: impl FnMut(&[u8])) {
-    match info.terminal {
-        Some(ProcessTermination::Requested) => write(b"reason=requested"),
-        Some(ProcessTermination::ThreadExited { status }) => {
-            write(b"reason=thread-exited status=");
-            write_signed(status, &mut write);
+/// Formats a lifecycle report into its caller's record without allocating or
+/// publishing individual fragments to the shared Console.
+pub(crate) struct ProcessReport(pub Option<ProcessInfo>);
+
+impl fmt::Display for ProcessReport {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let Some(info) = self.0 else {
+            return formatter.write_str("process-info-unavailable");
+        };
+        match info.terminal {
+            Some(ProcessTermination::Requested) => formatter.write_str("reason=requested"),
+            Some(ProcessTermination::ThreadExited { status }) => {
+                write!(formatter, "reason=thread-exited status={status}")
+            }
+            Some(ProcessTermination::ProcessExited { status }) => {
+                write!(formatter, "reason=process-exited status={status}")
+            }
+            Some(ProcessTermination::LastThreadExited { status }) => {
+                write!(formatter, "reason=last-thread-exited status={status}")
+            }
+            Some(ProcessTermination::Fault { class, code }) => {
+                write!(formatter, "reason=fault class={class} code={code}")
+            }
+            Some(ProcessTermination::TaskGroupStop { generation }) => {
+                write!(formatter, "reason=task-group-stop generation={generation}")
+            }
+            None => formatter.write_str("reason=unavailable"),
         }
-        Some(ProcessTermination::ProcessExited { status }) => {
-            write(b"reason=process-exited status=");
-            write_signed(status, &mut write);
-        }
-        Some(ProcessTermination::LastThreadExited { status }) => {
-            write(b"reason=last-thread-exited status=");
-            write_signed(status, &mut write);
-        }
-        Some(ProcessTermination::Fault { class, code }) => {
-            write(b"reason=fault class=");
-            write_unsigned(u64::from(class), &mut write);
-            write(b" code=");
-            write_unsigned(code, &mut write);
-        }
-        Some(ProcessTermination::TaskGroupStop { generation }) => {
-            write(b"reason=task-group-stop generation=");
-            write_unsigned(generation, &mut write);
-        }
-        None => write(b"reason=unavailable"),
     }
-}
-
-fn write_signed(value: i64, write: &mut impl FnMut(&[u8])) {
-    write(value.to_string().as_bytes());
-}
-
-fn write_unsigned(value: u64, write: &mut impl FnMut(&[u8])) {
-    write(value.to_string().as_bytes());
 }
 
 #[cfg(test)]

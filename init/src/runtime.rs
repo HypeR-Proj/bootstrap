@@ -422,18 +422,18 @@ impl LaunchError {
         }
     }
 
-    const fn reason(&self) -> &'static [u8] {
+    const fn reason(&self) -> &'static str {
         match self {
-            Self::AuthorityConsumed => b"authority already consumed",
-            Self::CriticalServiceTerminated => b"critical service terminated",
-            Self::InvalidPlan => b"invalid launch plan",
-            Self::OperatingSystem => b"kernel operation rejected",
-            Self::RequiredServiceUnavailable => b"startup provider unavailable",
-            Self::ServiceUnavailable => b"service image or resources unavailable",
-            Self::UnsupportedAuthority => b"unsupported authority",
-            Self::UnsupportedRestartPolicy => b"unsupported restart policy",
-            Self::UnsupportedSupervisionGraph => b"unsupported supervision graph",
-            Self::WaitTimedOut => b"service handshake timed out",
+            Self::AuthorityConsumed => "authority already consumed",
+            Self::CriticalServiceTerminated => "critical service terminated",
+            Self::InvalidPlan => "invalid launch plan",
+            Self::OperatingSystem => "kernel operation rejected",
+            Self::RequiredServiceUnavailable => "startup provider unavailable",
+            Self::ServiceUnavailable => "service image or resources unavailable",
+            Self::UnsupportedAuthority => "unsupported authority",
+            Self::UnsupportedRestartPolicy => "unsupported restart policy",
+            Self::UnsupportedSupervisionGraph => "unsupported supervision graph",
+            Self::WaitTimedOut => "service handshake timed out",
         }
     }
 }

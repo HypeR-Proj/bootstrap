@@ -3,22 +3,18 @@
 
 extern crate std;
 
+use super::ProcessReport;
 use hyper_os::task::{ProcessInfo, ProcessPhase, ProcessTermination};
 use std::string::String;
-use std::vec::Vec;
-
-use super::write_process_termination;
 
 fn render(terminal: Option<ProcessTermination>) -> String {
-    let mut bytes = Vec::new();
-    write_process_termination(
-        ProcessInfo {
+    format!(
+        "{}",
+        ProcessReport(Some(ProcessInfo {
             phase: ProcessPhase::Stopped,
             terminal,
-        },
-        |fragment| bytes.extend_from_slice(fragment),
-    );
-    String::from_utf8(bytes).unwrap_or_default()
+        }))
+    )
 }
 
 #[test]
@@ -59,4 +55,5 @@ fn renders_non_exit_reasons_and_missing_terminal_detail() {
         "reason=task-group-stop generation=18446744073709551615"
     );
     assert_eq!(render(None), "reason=unavailable");
+    assert_eq!(ProcessReport(None).to_string(), "process-info-unavailable");
 }
