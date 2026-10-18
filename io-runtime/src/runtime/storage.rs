@@ -247,6 +247,7 @@ pub(super) fn mount_volumes(
     let (sender, receiver) = hyper_os::channel::create_pair().map_err(show)?;
     std::thread::scope(|scope| -> Result<bool> {
         let worker = std::thread::Builder::new()
+            .name("filesystem-attach".into())
             .spawn_scoped(scope, move || {
                 let result = filesystem::attach(provider, volumes);
                 let _ = sender.as_byte_channel().try_send(b"done");
