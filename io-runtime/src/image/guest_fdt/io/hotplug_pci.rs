@@ -93,7 +93,7 @@ impl HotplugPci {
                 check_irq(device.irq)?;
             }
         }
-        if let Some(pci) = io.pci {
+        for pci in io.pci.into_iter().flatten() {
             check_memory(pci.aperture.base, pci.aperture.size)?;
             let end = pci
                 .interrupt_base
@@ -112,7 +112,7 @@ impl HotplugPci {
         builder.begin_node(hex_node_name("pcie@", self.ecam.base, &mut name)?)?;
         builder.property_string("compatible", "pci-host-ecam-generic")?;
         builder.property_string("device_type", "pci")?;
-        builder.property_u32("linux,pci-domain", 1)?;
+        builder.property_u32("linux,pci-domain", 2)?;
         builder.property_u32("#address-cells", 3)?;
         builder.property_u32("#size-cells", 2)?;
         builder.property_u32("#interrupt-cells", 1)?;
@@ -144,6 +144,8 @@ impl HotplugPci {
                 1,
                 super::super::GIC_PHANDLE,
                 0,
+                0,
+                0,
                 self.hotplug_irq - 32,
                 4,
                 0,
@@ -151,6 +153,8 @@ impl HotplugPci {
                 0,
                 2,
                 super::super::GIC_PHANDLE,
+                0,
+                0,
                 0,
                 self.endpoint_irq - 32,
                 4,

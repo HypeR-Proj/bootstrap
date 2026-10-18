@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 roolrz
 // SPDX-License-Identifier: Apache-2.0
 
-//! A single admitted PCI function behind generic ECAM and `GICv2m` interfaces.
+//! A single admitted PCI function behind generic ECAM and routed interrupts.
 
 use super::{
     Aarch64LinuxBoot, Builder, Error, FirmwareNode, IoDevices, MmioDevice, MmioWindow, firmware,
@@ -23,8 +23,9 @@ pub struct PciBar {
 pub struct PciHost<'a> {
     pub aperture: MmioWindow,
     pub ecam: MmioWindow,
-    pub msi: MmioWindow,
-    /// Full GIC INTID of the first MSI, not the SPI-relative DT encoding.
+    /// None selects a single host-routed level `INTx` interrupt.
+    pub msi: Option<MmioWindow>,
+    /// Full GIC INTID of the first interrupt, not the SPI-relative DT encoding.
     pub interrupt_base: u32,
     pub interrupt_count: u32,
     pub bars: &'a [PciBar],
@@ -35,6 +36,9 @@ pub struct PciHost<'a> {
 }
 
 impl PciHost<'_> {
+    fn domain(self) -> u32 {
+        u32::from(self.aperture.base == 0x0b00_0000)
+    }
     pub(super) fn validate(
         self,
         io: IoDevices<'_>,
@@ -66,11 +70,13 @@ impl PciHost<'_> {
                     base: self.aperture.base,
                     size: 0x10_0000,
                 })
-            || self.msi
-                != (MmioWindow {
+            || self.msi.is_some_and(|msi| {
+                msi != (MmioWindow {
                     base: self.aperture.base + 0x10_0000,
                     size: 4096,
                 })
+            })
+            || (self.msi.is_none() && self.interrupt_count != 1)
         {
             return Err(Error::InvalidInput);
         }
@@ -83,6 +89,19 @@ impl PciHost<'_> {
             }
         };
         check_memory(boot.memory_base, boot.memory_size)?;
+        for other in io.pci.into_iter().flatten() {
+            if other.aperture.base != self.aperture.base {
+                check_memory(other.aperture.base, other.aperture.size)?;
+                if super::overlaps(
+                    u64::from(self.interrupt_base),
+                    u64::from(irq_end),
+                    u64::from(other.interrupt_base),
+                    u64::from(other.interrupt_base) + u64::from(other.interrupt_count),
+                ) {
+                    return Err(Error::InvalidInput);
+                }
+            }
+        }
         if let Some(shared) = io.shared_memory {
             check_memory(shared.base, shared.size)?;
         }
@@ -176,16 +195,16 @@ impl PciHost<'_> {
         self,
         builder: &mut Builder<'_>,
     ) -> Result<(), Error> {
-        builder.property_u32("#address-cells", 2)?;
-        builder.property_u32("#size-cells", 2)?;
-        builder.property_empty("ranges")?;
+        let Some(msi) = self.msi else {
+            return Ok(());
+        };
         let mut name = [0; 64];
-        builder.begin_node(hex_node_name("msi-controller@", self.msi.base, &mut name)?)?;
+        builder.begin_node(hex_node_name("msi-controller@", msi.base, &mut name)?)?;
         builder.property_string("compatible", "arm,gic-v2m-frame")?;
-        builder.property_u64_pair("reg", self.msi.base, self.msi.size)?;
+        builder.property_u64_pair("reg", msi.base, msi.size)?;
         builder.property_empty("msi-controller")?;
         builder.property_u32("#msi-cells", 0)?;
-        builder.property_u32("phandle", MSI_PHANDLE)?;
+        builder.property_u32("phandle", MSI_PHANDLE + self.domain())?;
         builder.property_u32("arm,msi-base-spi", self.interrupt_base)?;
         builder.property_u32("arm,msi-num-spis", self.interrupt_count)?;
         builder.end_node()
@@ -196,13 +215,32 @@ impl PciHost<'_> {
         builder.begin_node(hex_node_name("pcie@", self.ecam.base, &mut name)?)?;
         builder.property_string("compatible", "pci-host-ecam-generic")?;
         builder.property_string("device_type", "pci")?;
-        builder.property_u32("linux,pci-domain", 0)?;
+        builder.property_u32("linux,pci-domain", self.domain())?;
         builder.property_u32("#address-cells", 3)?;
         builder.property_u32("#size-cells", 2)?;
         builder.property_u32("#interrupt-cells", 1)?;
         builder.property_u64_pair("reg", self.ecam.base, self.ecam.size)?;
         builder.property_cells("bus-range", &[0, 0])?;
-        builder.property_u32("msi-parent", MSI_PHANDLE)?;
+        if self.msi.is_some() {
+            builder.property_u32("msi-parent", MSI_PHANDLE + self.domain())?;
+        } else {
+            builder.property_cells("interrupt-map-mask", &[0xf800, 0, 0, 7])?;
+            builder.property_cells(
+                "interrupt-map",
+                &[
+                    0,
+                    0,
+                    0,
+                    1,
+                    super::super::GIC_PHANDLE,
+                    0,
+                    0,
+                    0,
+                    self.interrupt_base - 32,
+                    4,
+                ],
+            )?;
+        }
         let mut cells = [0; 6 * 7];
         for (bar, cells) in self.bars.iter().zip(cells.chunks_exact_mut(7)) {
             let flags = if bar.memory64 {

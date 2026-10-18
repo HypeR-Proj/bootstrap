@@ -207,8 +207,17 @@ fn start_mode(
     if guest.cpus.is_empty() || guest.cpus.len() > 8 {
         return Err(Error::Status(Status::NOT_SUPPORTED));
     }
+    // Register/IRQ service needs no delegation or assignment authority. The
+    // worker still shares io-runtime's handle table; this is not thread isolation.
     let physical = physical
-        .map(|physical| physical.duplicate(physical.info()?.rights))
+        .map(|physical| {
+            physical.duplicate(
+                hyper_os::Rights::READ
+                    .union(hyper_os::Rights::WRITE)
+                    .union(hyper_os::Rights::WAIT)
+                    .union(hyper_os::Rights::ACK_INTERRUPT),
+            )
+        })
         .transpose()?;
     // Share the same process-local capabilities. Installed VM/vCPU handles
     // intentionally cannot be duplicated through the Native capability API.

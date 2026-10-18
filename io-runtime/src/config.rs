@@ -126,17 +126,29 @@ impl Config {
             network_device,
             networks,
         } = board.io_vm;
-        if matches!(
-            device.profile(),
-            hyper_os::device::Profile::VirtioMmioNet | hyper_os::device::Profile::PciFunction
-        ) {
+        if matches!(device.profile(), hyper_os::device::Profile::VirtioMmioNet)
+            || (device.profile() == hyper_os::device::Profile::PciFunction
+                && !matches!(
+                    device.identity(),
+                    hyper_os::device::FirmwareIdentity::PciId {
+                        vendor: 0x1af4,
+                        device: 0x1048
+                    }
+                ))
+        {
             return Err("I/O storage device requires a storage controller profile".into());
         }
         validate_networks(network_device.as_ref(), networks.as_deref())?;
         if let Some(network) = network_device.as_ref() {
             let expected_boot = match network.profile() {
                 hyper_os::device::Profile::VirtioMmioNet => "qemu-direct",
-                hyper_os::device::Profile::PciFunction => "rpi5-firmware",
+                hyper_os::device::Profile::PciFunction => match network.identity() {
+                    hyper_os::device::FirmwareIdentity::PciId {
+                        vendor: 0x1af4,
+                        device: 0x1041,
+                    } => "qemu-direct",
+                    _ => "rpi5-firmware",
+                },
                 _ => return Err("unsupported physical network profile".into()),
             };
             if board.boot.as_deref() != Some(expected_boot) {

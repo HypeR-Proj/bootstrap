@@ -129,7 +129,7 @@ pub fn claim_virtio_test(
 ) -> Result<OwnedHandle<PhysicalDeviceObject>> {
     let nodes = firmware::read(authority, PROPERTIES)?;
     let node = virtio_test_node(&nodes, identity)?;
-    device::claim_bundle(
+    let physical = device::claim_bundle(
         authority,
         &[BundleEntry {
             node,
@@ -137,7 +137,38 @@ pub fn claim_virtio_test(
             offset: 0,
         }],
         node,
-    )
+    )?;
+    verify_delegated_rights(&physical)?;
+    Ok(physical)
+}
+
+#[cfg(feature = "userspace-device-test")]
+fn verify_delegated_rights(physical: &OwnedHandle<PhysicalDeviceObject>) -> Result<()> {
+    use hyper_os::handle::Rights;
+    let denied = Error::Status(Status::ACCESS_DENIED);
+    let inspect = physical.duplicate(Rights::INSPECT.union(Rights::DUPLICATE))?;
+    device::profile_info(inspect.as_handle_ref())?;
+    if device::mmio_read(inspect.as_handle_ref(), 0, 4) != Err(denied)
+        || device::mmio_write(inspect.as_handle_ref(), 0x70, 4, 0) != Err(denied)
+        || device::irq_pending(inspect.as_handle_ref()) != Err(denied)
+        || device::irq_complete(inspect.as_handle_ref(), 0, false) != Err(denied)
+        || inspect.duplicate(Rights::ASSIGN_DEVICE).is_ok()
+    {
+        return Err(Error::InvalidResponse);
+    }
+    let read = physical.duplicate(Rights::READ)?;
+    let write = physical.duplicate(Rights::WRITE)?;
+    if device::mmio_write(read.as_handle_ref(), 0x70, 4, 0) != Err(denied)
+        || device::mmio_read(write.as_handle_ref(), 0, 4) != Err(denied)
+        || device::irq_complete(write.as_handle_ref(), 0, false) != Err(denied)
+    {
+        return Err(Error::InvalidResponse);
+    }
+    println!(
+        "{}device permission attenuation passed",
+        crate::logging::prefix("io-runtime")
+    );
+    Ok(())
 }
 
 #[cfg(feature = "userspace-device-test")]

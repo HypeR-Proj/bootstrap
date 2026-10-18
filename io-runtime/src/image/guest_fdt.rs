@@ -249,7 +249,10 @@ pub fn build_aarch64_linux_with_io(
             },
         ],
     )?;
-    if let Some(pci) = devices.pci {
+    builder.property_u32("#address-cells", 2)?;
+    builder.property_u32("#size-cells", 2)?;
+    builder.property_empty("ranges")?;
+    for pci in devices.pci.into_iter().flatten() {
         pci.append_msi(&mut builder)?;
     }
     builder.end_node()?;

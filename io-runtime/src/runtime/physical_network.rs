@@ -21,7 +21,7 @@ pub(super) enum PhysicalNetwork {
         node: MmioDevice,
     },
     Pci {
-        firmware: rp1::Projection,
+        firmware: Option<rp1::Projection>,
         assignment: pci::Assignment,
     },
 }
@@ -49,18 +49,27 @@ impl PhysicalNetwork {
                     PHYSICAL_PCI_IRQ,
                 )
                 .map_err(show)?;
-                // This board's function is RP1. Only its firmware description is
-                // board-specific; ECAM/BAR/MSI transport is generic PCI metadata.
-                if !matches!(
+                // RP1 needs board firmware for its child devices. Modern
+                // virtio functions enumerate themselves through PCI capabilities.
+                let firmware = if matches!(
                     policy.identity(),
                     device::FirmwareIdentity::PciId {
                         vendor: 0x1de4,
                         device: 1
                     }
                 ) {
+                    Some(rp1::describe(authority, assignment.bars()).map_err(show)?)
+                } else if matches!(
+                    policy.identity(),
+                    device::FirmwareIdentity::PciId {
+                        vendor: 0x1af4,
+                        device: 0x1041
+                    }
+                ) {
+                    None
+                } else {
                     return Err("no board firmware projection for selected PCI function".into());
-                }
-                let firmware = rp1::describe(authority, assignment.bars()).map_err(show)?;
+                };
                 Ok(Self::Pci {
                     firmware,
                     assignment,
@@ -103,7 +112,12 @@ impl PhysicalNetwork {
             Self::Pci {
                 firmware,
                 assignment,
-            } => firmware.with_nodes(|nodes| describe(None, Some(assignment.host(nodes)))),
+            } => match firmware {
+                Some(firmware) => {
+                    firmware.with_nodes(|nodes| describe(None, Some(assignment.host(nodes))))
+                }
+                None => describe(None, Some(assignment.host(&[]))),
+            },
         }
     }
 

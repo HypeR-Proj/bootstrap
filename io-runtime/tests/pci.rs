@@ -48,7 +48,7 @@ fn full_function_transport_uses_admitted_bar_and_vector_metadata() {
             size: 0x10_0000
         }
     );
-    assert_eq!(host.msi.base, 0xb90_0000);
+    assert_eq!(host.msi.unwrap().base, 0xb90_0000);
     assert_eq!(host.bars[1].bus_address, 0x40_0000);
     assert_eq!(host.bars[1].window.base, 0xbc0_0000);
     assert_eq!(host.dma_bus_offset, 0x10_0000_0000);
@@ -67,4 +67,27 @@ fn missing_duplicate_or_outside_resources_never_produce_partial_host() {
     assert!(Resources::project(info(), &records, 0xb80_0000, 128).is_err());
     assert!(Resources::project(info(), &resources()[..4], 0xb80_0000, 128).is_err());
     assert!(Resources::project(info(), &resources(), 0xb80_0000, 250).is_err());
+}
+
+#[test]
+fn intx_projection_requires_one_irq_and_no_msi_frame() {
+    let mut profile = info();
+    profile.interrupt_count = 1;
+    profile.pci_identity = 0x1048_1af4;
+    profile.dma_bus_offset = 0;
+    let mut records = resources();
+    records[1] = ResourceInfo {
+        kind: device::RESOURCE_PCI_INTX,
+        flags: 0,
+        offset: 0,
+        length: 0,
+        bus_address: 0,
+    };
+    let projected = Resources::project(profile, &records, 0xb00_0000, 40).unwrap();
+    assert!(projected.host(&[]).msi.is_none());
+    profile.interrupt_count = 2;
+    assert!(Resources::project(profile, &records, 0xb00_0000, 40).is_err());
+    profile.interrupt_count = 1;
+    records[2] = resources()[1];
+    assert!(Resources::project(profile, &records, 0xb00_0000, 40).is_err());
 }

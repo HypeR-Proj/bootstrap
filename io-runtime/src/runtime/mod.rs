@@ -107,6 +107,21 @@ fn run(
                 .map_err(show)?;
             (physical, None)
         }
+        device::Profile::PciFunction
+            if matches!(
+                policy.identity(),
+                device::FirmwareIdentity::PciId {
+                    vendor: 0x1af4,
+                    device: 0x1048
+                }
+            ) =>
+        {
+            (
+                device::claim_matching(authority, policy.profile(), policy.identity())
+                    .map_err(show)?,
+                None,
+            )
+        }
         device::Profile::VirtioMmioNet | device::Profile::PciFunction => {
             return Err("network controller selected for storage".into());
         }
@@ -175,22 +190,35 @@ fn run(
             size: window.length,
         })
     };
-    let host = resource(0)?;
-    let host = MmioDevice {
-        base: host.base,
-        size: host.size,
-        irq: 40,
+    let storage_pci = if profile.profile == device::Profile::PciFunction {
+        Some(
+            hyper_io_runtime::pci::Resources::inspect(physical.as_handle_ref(), PHYSICAL_MMIO, 40)
+                .map_err(show)?,
+        )
+    } else {
+        None
+    };
+    let mmio_host = || -> Result<MmioDevice> {
+        let window = resource(0)?;
+        Ok(MmioDevice {
+            base: window.base,
+            size: window.size,
+            irq: 40,
+        })
     };
     let (storage_node, sdhci) = match (profile.profile, sdhci_profile) {
+        (device::Profile::PciFunction, None) => (None, None),
         (device::Profile::VirtioMmioScsi, None) if profile.resource_count == 1 => {
-            (Some(host), None)
+            (Some(mmio_host()?), None)
         }
         #[cfg(feature = "userspace-device-test")]
-        (device::Profile::Userspace, None) if profile.resource_count == 1 => (Some(host), None),
+        (device::Profile::Userspace, None) if profile.resource_count == 1 => {
+            (Some(mmio_host()?), None)
+        }
         (device::Profile::Userspace, Some(metadata)) if profile.resource_count == 5 => (
             None,
             Some(SdhciDevice {
-                host,
+                host: mmio_host()?,
                 config: resource(1)?,
                 main_pinctrl: resource(2)?,
                 aon_pinctrl: resource(3)?,
@@ -207,6 +235,10 @@ fn run(
         _ => return Err("invalid physical resource bundle".into()),
     };
     network.with_description(|network_node, pci| -> Result<()> {
+        let pci = [
+            pci,
+            storage_pci.as_ref().map(|resources| resources.host(&[])),
+        ];
         if !clients.is_empty() {
             let mut descriptions: Vec<_> =
                 clients.iter().map(|client| client.description()).collect();

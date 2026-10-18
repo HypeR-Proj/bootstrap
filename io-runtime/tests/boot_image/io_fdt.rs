@@ -36,7 +36,7 @@ fn devices() -> IoDevices<'static> {
         hotplug_pci: None,
         clients: &[],
         sdhci: None,
-        pci: None,
+        pci: [None; 2],
         network: None,
         virtio: Some(MmioDevice {
             base: 0x0b00_0000,
@@ -961,7 +961,7 @@ fn hotplug_bus_has_two_buses_and_identity_dma_separate_from_physical_devices()
         values
             .get("/pcie@a600000/linux,pci-domain")
             .map(Vec::as_slice),
-        Some(1u32.to_be_bytes().as_slice())
+        Some(2u32.to_be_bytes().as_slice())
     );
     let bus_range: Vec<_> = [0u32, 1].into_iter().flat_map(u32::to_be_bytes).collect();
     assert_eq!(values.get("/pcie@a600000/bus-range"), Some(&bus_range));
@@ -981,6 +981,8 @@ fn hotplug_bus_has_two_buses_and_identity_dma_separate_from_physical_devices()
         1,
         super::super::GIC_PHANDLE,
         0,
+        0,
+        0,
         88,
         4,
         0,
@@ -988,6 +990,8 @@ fn hotplug_bus_has_two_buses_and_identity_dma_separate_from_physical_devices()
         0,
         2,
         super::super::GIC_PHANDLE,
+        0,
+        0,
         0,
         89,
         4,

@@ -72,7 +72,7 @@ pub struct IoDevices<'ranges> {
     pub network: Option<MmioDevice>,
     pub sdhci: Option<SdhciDevice>,
     /// Entire assigned PCI function with its caller-projected firmware subtree.
-    pub pci: Option<PciHost<'ranges>>,
+    pub pci: [Option<PciHost<'ranges>>; 2],
     /// Empty for a virtual frontend; physical assignment requires complete
     /// coverage of ordinary and imported RAM through explicit DMA translations.
     pub dma_ranges: &'ranges [DmaRange],
@@ -89,7 +89,7 @@ impl IoDevices<'_> {
             virtio: None,
             network: None,
             sdhci: None,
-            pci: None,
+            pci: [None; 2],
             dma_ranges: &[],
             shared_memory: None,
             mailbox: None,
@@ -98,13 +98,18 @@ impl IoDevices<'_> {
     }
 
     pub(super) fn validate(self, boot: Aarch64LinuxBoot<'_>) -> Result<(), Error> {
+        if let [Some(a), Some(b)] = self.pci
+            && a.aperture.base == b.aperture.base
+        {
+            return Err(Error::InvalidInput);
+        }
         if let Some(pci) = self.hotplug_pci {
             pci.validate(self, boot)?;
         }
         if let Some(sdhci) = self.sdhci {
             sdhci.validate(self, boot)?;
         }
-        if let Some(pci) = self.pci {
+        for pci in self.pci.into_iter().flatten() {
             pci.validate(self, boot)?;
         }
         if !self.clients.is_empty() {
@@ -174,7 +179,9 @@ impl IoDevices<'_> {
         if self.dma_ranges.is_empty() {
             return Ok(());
         }
-        if (self.storage_node().is_none() && self.network.is_none() && self.pci.is_none())
+        if (self.storage_node().is_none()
+            && self.network.is_none()
+            && self.pci.iter().all(Option::is_none))
             || self.dma_ranges.len() > MAX_DMA_RANGES
         {
             return Err(Error::InvalidInput);
@@ -309,7 +316,10 @@ impl IoDevices<'_> {
         if self.dma_ranges.is_empty() {
             return Ok(());
         }
-        if self.storage_node().is_none() && self.network.is_none() && self.pci.is_none() {
+        if self.storage_node().is_none()
+            && self.network.is_none()
+            && self.pci.iter().all(Option::is_none)
+        {
             return Err(Error::InvalidInput);
         }
         let mut admitted_coverage = 0u64;
@@ -504,7 +514,7 @@ impl IoDevices<'_> {
                 builder.end_node()?;
             }
         }
-        if let Some(pci) = self.pci {
+        for pci in self.pci.into_iter().flatten() {
             pci.append(builder, self)?;
         }
         if let Some(mailbox) = self.mailbox {

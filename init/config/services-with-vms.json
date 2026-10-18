@@ -418,7 +418,9 @@
           "purpose": "io.device-authority",
           "operation": "duplicate",
           "rights": [
-            "inspect"
+            "inspect",
+            "assign-device",
+            "map-dma"
           ]
         },
         {

@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 roolrz
 // SPDX-License-Identifier: Apache-2.0
 
-use super::std::vec::Vec;
+use super::std::{self, vec::Vec};
 use super::{DMA, build, devices, properties};
 use crate::image::guest_fdt::Error;
 use crate::image::guest_fdt::io::{
@@ -50,10 +50,10 @@ fn host() -> PciHost<'static> {
             base: 0x0b80_0000,
             size: 0x10_0000,
         },
-        msi: MmioWindow {
+        msi: Some(MmioWindow {
             base: 0x0b90_0000,
             size: 4096,
-        },
+        }),
         interrupt_base: 128,
         interrupt_count: 64,
         bars: &BARS,
@@ -63,7 +63,7 @@ fn host() -> PciHost<'static> {
 }
 fn with_pci(pci: PciHost<'_>) -> IoDevices<'_> {
     IoDevices {
-        pci: Some(pci),
+        pci: [Some(pci), None],
         ..devices()
     }
 }
@@ -123,6 +123,71 @@ fn pci_host_preserves_bus_addresses_dma_translation_and_msi_vectors() -> Result<
 }
 
 #[test]
+fn two_intx_hosts_have_distinct_domains_and_wired_routes() -> Result<(), &'static str> {
+    let network = PciHost {
+        msi: None,
+        interrupt_count: 1,
+        ..host()
+    };
+    let mut storage_bars = BARS;
+    for bar in &mut storage_bars {
+        bar.window.base -= 0x80_0000;
+    }
+    let storage = PciHost {
+        aperture: MmioWindow {
+            base: 0xb00_0000,
+            size: 0x80_0000,
+        },
+        ecam: MmioWindow {
+            base: 0xb00_0000,
+            size: 0x10_0000,
+        },
+        interrupt_base: 40,
+        bars: &storage_bars,
+        ..network
+    };
+    let io = IoDevices {
+        virtio: None,
+        pci: [Some(network), Some(storage)],
+        ..devices()
+    };
+    let values = properties(&build(io).map_err(|_| "build two PCI hosts")?)?;
+    for (path, domain, irq) in [("/pcie@b800000", 0, 128), ("/pcie@b000000", 1, 40)] {
+        assert_eq!(
+            values.get(&std::format!("{path}/linux,pci-domain")),
+            Some(&cells(&[domain]))
+        );
+        assert!(!values.contains_key(&std::format!("{path}/msi-parent")));
+        let route = values
+            .get(&std::format!("{path}/interrupt-map"))
+            .ok_or("missing INTx route")?;
+        assert_eq!(route.len(), 40);
+        assert_eq!(&route[28..], cells(&[0, irq - 32, 4]));
+    }
+    assert!(
+        build(IoDevices {
+            pci: [Some(network), Some(network)],
+            ..io
+        })
+        .is_err()
+    );
+    assert!(
+        build(IoDevices {
+            pci: [
+                Some(network),
+                Some(PciHost {
+                    interrupt_base: 128,
+                    ..storage
+                })
+            ],
+            ..io
+        })
+        .is_err()
+    );
+    Ok(())
+}
+
+#[test]
 fn pci_rejects_out_of_aperture_resources_bar_aliases_and_interrupt_overlap() {
     for pci in [
         PciHost {
@@ -149,10 +214,10 @@ fn pci_rejects_out_of_aperture_resources_bar_aliases_and_interrupt_overlap() {
             ..host()
         },
         PciHost {
-            msi: MmioWindow {
+            msi: Some(MmioWindow {
                 base: 0x0b90_0000,
                 size: 8192,
-            },
+            }),
             ..host()
         },
         PciHost {
