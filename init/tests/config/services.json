@@ -99,7 +99,8 @@
             "create-process",
             "duplicate",
             "transfer",
-            "create-task-group"
+            "create-task-group",
+            "retain-process"
           ]
         },
         {
@@ -312,7 +313,8 @@
           "operation": "duplicate",
           "rights": [
             "create-process",
-            "create-task-group"
+            "create-task-group",
+            "retain-process"
           ]
         },
         {

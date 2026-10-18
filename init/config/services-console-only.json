@@ -96,7 +96,8 @@
             "create-process",
             "duplicate",
             "transfer",
-            "create-task-group"
+            "create-task-group",
+            "retain-process"
           ]
         },
         {

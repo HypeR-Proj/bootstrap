@@ -132,7 +132,11 @@ fn try_transfer(
     builder.add_handle_duplicate(
         a.factory.as_handle_ref(),
         startup::TASK_FACTORY.as_raw(),
-        RightsOffer::Exact(Rights::CREATE_PROCESS.union(Rights::LOCK_MEMORY)),
+        RightsOffer::Exact(
+            Rights::CREATE_PROCESS
+                .union(Rights::LOCK_MEMORY)
+                .union(Rights::RETAIN_PROCESS),
+        ),
     )?;
     builder.add_handle_duplicate(
         candidate_group.as_handle_ref(),

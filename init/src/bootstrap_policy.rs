@@ -237,6 +237,7 @@ impl AuthorityPolicy for BootstrapPolicy {
             "set-attributes" => Some(Rights::SET_ATTRIBUTES.bits()),
             "lock-file" => Some(Rights::LOCK_FILE.bits()),
             "create-process" => Some(Rights::CREATE_PROCESS.bits()),
+            "retain-process" => Some(Rights::RETAIN_PROCESS.bits()),
             "create-task-group" => Some(Rights::CREATE_TASK_GROUP.bits()),
             "create-resource-domain" => Some(Rights::CREATE_RESOURCE_DOMAIN.bits()),
             "create-virtual-machine" => Some(Rights::CREATE_VIRTUAL_MACHINE.bits()),
@@ -332,6 +333,7 @@ const fn task_factory_rights() -> Rights {
         .union(Rights::INSPECT)
         .union(Rights::CREATE_PROCESS)
         .union(Rights::CREATE_TASK_GROUP)
+        .union(Rights::RETAIN_PROCESS)
 }
 
 const fn task_group_rights() -> Rights {
