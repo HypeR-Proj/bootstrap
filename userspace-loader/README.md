@@ -29,9 +29,14 @@ writable global state.
 
 The first argument register (`x0` or `a0`) holds a child-owned ByteChannel handle.
 SP identifies the top of an empty guarded 128 KiB stack. One queued message
-contains the 72-byte `loader_startup` header, tagged startup handle records,
+contains the 96-byte `loader_startup` header, tagged startup handle records,
 and bounded opaque launch data. It supplies an ordinary executable File with `READ|EXECUTE|PROTECT`,
-root/stack VMAR handles, bootstrap mapping bounds and a reply flag. The loader
+root/stack VMAR handles, bootstrap mapping bounds, a reply flag and the child's
+ExecutionContext, ObjectFactory and SystemInfo capabilities. The initial channel
+read requires only the explicit channel handle. The stage-1 loader passes context
+handles in the entry vector; it uses explicit receivers throughout and retains no
+writable invocation globals. A loading failure uses the supplied ExecutionContext
+to exit; a malformed header without a trustworthy context terminates by trap. The loader
 acquires content protection before obtaining the size or reading any ELF bytes.
 There is no ambient runtime-directory capability in this record.
 

@@ -21,5 +21,6 @@ hyper_native_status_t elf_launch_receive(ElfLaunch *launch, hyper_native_handle_
 					 uintptr_t stack_top);
 uintptr_t elf_launch_stack(const ElfLaunch *launch, const ElfImage *main,
 			   hyper_native_handle_t channel, uintptr_t linker_base, int retire_loader);
-_Noreturn void elf_launch_fail(hyper_native_handle_t channel, hyper_native_status_t status);
+_Noreturn void elf_launch_fail(hyper_native_handle_t channel, hyper_native_handle_t execution,
+			       hyper_native_status_t status);
 #endif
