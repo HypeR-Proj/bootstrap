@@ -158,7 +158,9 @@
           "rights": [
             "duplicate",
             "transfer",
-            "inspect"
+            "inspect",
+            "set-attributes",
+            "inspect-details"
           ]
         },
         {
