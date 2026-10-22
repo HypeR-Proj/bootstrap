@@ -3,6 +3,10 @@
 
 # Stage-1 bootstrap and recovery
 
+Build and deployment options are declared in this directory's [Kconfig](Kconfig).
+Use the repository's `make menuconfig` and `.config` to select programs; see
+[product configuration](../../docs/configuration.md) for dependencies and defconfig workflows.
+
 This directory owns programs needed in the RAM filesystem to bring up storage,
 mount the system volume and provide a basic recovery shell. Ordinary tools and
 the system init live in [`svc/`](../../svc/README.md); reusable service

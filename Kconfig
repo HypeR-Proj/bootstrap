@@ -1,0 +1,68 @@
+# SPDX-FileCopyrightText: 2026 roolrz
+# SPDX-License-Identifier: Apache-2.0
+
+menu "Bootstrap stage1"
+
+config BOOT_APP_CONSOLE_RAW
+    bool "console-raw (/svc/console-raw)"
+    default y
+    depends on BOOT_APP_INIT
+    help
+        Build and deploy hyper-console-raw at /svc/console-raw.
+
+config BOOT_APP_FALLBACK_SH
+    bool "fallback-sh (/svc/fallback-sh)"
+    default y
+    depends on BOOT_APP_CONSOLE_RAW
+    help
+        Build and deploy hyper-fallback-sh at /svc/fallback-sh.
+
+config BOOT_APP_FS_BACKEND
+    bool "fs-backend (/svc/fs-backend)"
+    default y
+    depends on BOOT_APP_CONSOLE_RAW
+    help
+        Build and deploy hyper-fs-backend at /svc/fs-backend.
+
+config BOOT_APP_FS_EROFS
+    bool "fs-erofs (/svc/fs-erofs)"
+    default y
+    depends on BOOT_APP_FS_BACKEND
+    help
+        Build and deploy hyper-fs-erofs at /svc/fs-erofs.
+
+config BOOT_APP_FS_FAT
+    bool "fs-fat (/svc/fs-fat)"
+    default y
+    depends on BOOT_APP_FS_BACKEND
+    help
+        Build and deploy hyper-fs-fat at /svc/fs-fat.
+
+config BOOT_APP_INIT
+    bool "init (/init)"
+    default y
+    help
+        Build and deploy hyper-bootstrap-stage1-init at /init.
+
+config BOOT_APP_IO_RUNTIME
+    bool "io-runtime (/svc/io-runtime)"
+    default y
+    depends on BOOT_APP_CONSOLE_RAW
+    help
+        Build and deploy hyper-io-runtime at /svc/io-runtime.
+
+config BOOT_APP_MOUNT
+    bool "mount (/bin/mount)"
+    default y
+    depends on BOOT_APP_FS_BACKEND
+    help
+        Build and deploy hyper-mount at /bin/mount.
+
+config BOOT_APP_UMOUNT
+    bool "umount (/bin/umount)"
+    default y
+    depends on BOOT_APP_FS_BACKEND
+    help
+        Build and deploy hyper-umount at /bin/umount.
+
+endmenu
