@@ -5,7 +5,7 @@
 
 Build and deployment options are declared in this directory's [Kconfig](Kconfig).
 Use the repository's `make menuconfig` and `.config` to select programs; see
-[product configuration](../../docs/configuration.md) for dependencies and defconfig workflows.
+[product configuration](../../docs/usage/deployment/configuration.md) for dependencies and defconfig workflows.
 
 This directory owns programs needed in the RAM filesystem to bring up storage,
 mount the system volume and provide a basic recovery shell. Ordinary tools and
@@ -46,7 +46,7 @@ The handoff is independent of that choice: stage-1 establishes the independent
 root, while formal policy admits the selected provider's successor before
 ownership moves. Stage-1 does not interpret I/O VM migration payloads or select
 formal executables on the provider's behalf. See
-[boot profiles](../../docs/boot-layout.md#boot-profiles) for the schema and build
+[boot profiles](../../docs/usage/deployment/boot-policy.md#boot-profiles) for the schema and build
 validation boundary.
 
 Rust components own their `Cargo.toml` and `component.mk`. They belong to the
@@ -89,13 +89,13 @@ Stage-1 mounts the independent system volume, switches it to `/` while retaining
 the archive at `/boot`, and only then starts formal init. Provider adoption and
 retirement let formal init stop predecessor processes and detach that archive.
 Ordinary applications and shared libraries live on the independent system root.
-See [boot layout](../../docs/boot-layout.md) for deployment policy, fstab and the
+See [boot layout](../../docs/architecture/boot-layout.md) for deployment policy, fstab and the
 transfer of supervision.
 
 The init supervisor implementation is local to `init/`. FAT and EROFS engines
 are local to their respective worker programs. These single-consumer modules do
 not form independently linked bootstrap library packages. The
-[handoff contract](../../docs/bootstrap-handoff.md) separates supervision
+[handoff contract](../../docs/design/boot/bootstrap-handoff.md) separates supervision
 adoption from retirement, which is decided and executed by system init.
 
 Bootstrap service diagnostics use a boot timestamp, phase and service header,
@@ -108,4 +108,4 @@ It prepares `system-startup` to validate the domain inventory before accepting
 ownership. Stage1's candidate group includes both processes, so rejection stops
 both before rolling back. Component routes, journal policy and the finite formal
 startup sequence are not interpreted by stage1. See
-[component management](../../docs/services.md).
+[component management](../../docs/design/services/components.md).
