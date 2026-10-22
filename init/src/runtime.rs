@@ -11,7 +11,6 @@ mod report;
 mod root_switch;
 mod supervisor;
 
-use crate::bootstrap_policy::BootstrapPolicy;
 use authority::AuthorityInventory;
 use launcher::ServiceLauncher;
 use supervisor::{StorageReadiness, SupervisorSet};
@@ -25,30 +24,38 @@ use hyper_os::channel;
 use hyper_os::fs::Directory;
 use hyper_os::startup::{self, Startup};
 
-const MANIFEST_PATH: &str = "/etc/hyper/services.json";
-
 #[inline(never)]
 pub fn run(startup: &mut Startup<'_>) -> Result<(), Error> {
     hyper_os::require_core_abi().map_err(|_| Error::OperatingSystem)?;
     let root_directory = startup
         .take_root_directory()
         .map_err(|_| Error::OperatingSystem)?;
-    let source = load_manifest()?;
-    let manifest = crate::manifest::parse(&source).map_err(|_| Error::Source)?;
-    let plan = crate::manifest::validate(&manifest, &BootstrapPolicy).map_err(|_| Error::Source)?;
+    let command_line = startup
+        .take_boot_command_line()
+        .map_err(|error| Error::source("boot command line", format_args!("{error:?}")))?;
+    let selected = crate::profile::select(command_line.as_deref().unwrap_or(""))
+        .map_err(|error| Error::source("boot profile selector", error))?;
+    let profile_path = format!("{}/{selected}.json", crate::profile::DIRECTORY);
+    let profile =
+        crate::profile::Profile::parse(&load_text(&profile_path, crate::profile::MAX_BYTES)?)
+            .map_err(|error| Error::source(&profile_path, error))?;
+    let source = load_text(&profile.services, MAX_MANIFEST_BYTES)?;
+    let manifest = crate::manifest::parse(&source)
+        .map_err(|error| Error::source(&profile.services, format_args!("{error:?}")))?;
+    let plan = profile
+        .validate(&manifest)
+        .map_err(|error| Error::source(&profile_path, error))?;
     let mut runtime = Runtime::from_startup(startup, root_directory)?;
-    let system_init = match root_switch::SystemInitConfig::load() {
-        Ok(next) => next,
-        Err(_) => {
-            report::write(
-                &runtime.launcher.authorities.console,
-                format_args!("invalid system-init configuration; retaining recovery services\n"),
-            );
-            None
-        }
-    };
+    runtime.launcher.storage_service = profile
+        .storage_service(&manifest)
+        .map_err(|error| Error::source(&profile_path, error))?;
+    runtime.storage_successor = profile.io.successor().map(str::to_owned);
+    report::write(
+        &runtime.launcher.authorities.console,
+        format_args!("boot profile: {selected}\n"),
+    );
     runtime
-        .launch_validated_graph(&manifest, &plan, system_init.as_ref())
+        .launch_validated_graph(&manifest, &plan, profile.handoff.as_ref())
         .map_err(|error| {
             report::write(
                 &runtime.launcher.authorities.console,
@@ -61,27 +68,31 @@ pub fn run(startup: &mut Startup<'_>) -> Result<(), Error> {
 pub enum Error {
     Bootstrap,
     OperatingSystem,
-    Source,
+    Source(String),
 }
 
 impl Error {
-    pub const fn diagnostic(&self) -> &'static str {
+    pub fn diagnostic(&self) -> &str {
         match self {
             Self::Bootstrap => "bootstrap failed\n",
             Self::OperatingSystem => "startup capability operation failed\n",
-            Self::Source => "invalid service manifest source\n",
+            Self::Source(message) => message,
         }
+    }
+
+    fn source(context: &str, reason: impl std::fmt::Display) -> Self {
+        Self::Source(format!("{context}: {reason}\n"))
     }
 }
 
-fn load_manifest() -> Result<String, Error> {
-    let file = std::fs::File::open(MANIFEST_PATH).map_err(|_| Error::OperatingSystem)?;
+fn load_text(path: &str, maximum: usize) -> Result<String, Error> {
+    let file = std::fs::File::open(path).map_err(|error| Error::source(path, error))?;
     let mut text = String::new();
-    file.take(MAX_MANIFEST_BYTES as u64 + 1)
+    file.take(maximum as u64 + 1)
         .read_to_string(&mut text)
-        .map_err(|_| Error::Source)?;
-    if text.len() > MAX_MANIFEST_BYTES {
-        return Err(Error::Source);
+        .map_err(|error| Error::source(path, error))?;
+    if text.len() > maximum {
+        return Err(Error::source(path, "configuration exceeds size limit"));
     }
     Ok(text)
 }
@@ -94,6 +105,7 @@ struct Runtime {
     root_transition: Option<hyper_os::OwnedHandle<hyper_os::handle::RootTransitionObject>>,
     boot_libraries: Option<Directory>,
     system_root_mount: u64,
+    storage_successor: Option<String>,
 }
 
 impl Runtime {
@@ -155,7 +167,7 @@ impl Runtime {
             service_output_channel: None,
             io_ready_channel: None,
             console_drain: None,
-            io_handoff: None,
+            storage_handoff: None,
             filesystem_handoff: None,
             io_broker_server: None,
             io_broker_client: None,
@@ -168,11 +180,13 @@ impl Runtime {
             launcher: ServiceLauncher {
                 authorities,
                 handoff_enabled: false,
+                storage_service: None,
             },
             storage_ready: true,
             root_transition: None,
             boot_libraries: None,
             system_root_mount: 0,
+            storage_successor: None,
             supervisors: SupervisorSet {
                 processes: std::array::from_fn(|_| None),
             },
@@ -201,7 +215,7 @@ impl Runtime {
         &mut self,
         manifest: &Manifest<'_>,
         plan: &LaunchPlan,
-        system_init: Option<&root_switch::SystemInitConfig>,
+        system_init: Option<&crate::profile::Handoff>,
     ) -> Result<(), LaunchError> {
         Self::preflight(manifest)?;
         self.launcher.handoff_enabled = system_init.is_some();
@@ -275,7 +289,7 @@ impl Runtime {
                     // The successor is now the only migration coordinator.
                     // Retained endpoints would hide its death from providers;
                     // retained log writers would prevent the final raw drain.
-                    authorities.io_handoff.take();
+                    authorities.storage_handoff.take();
                     authorities.filesystem_handoff.take();
                     authorities.console_drain.take();
                     // The successful rendezvous moved all process owners.
@@ -310,10 +324,7 @@ impl Runtime {
         }
     }
 
-    fn prepare_system_root(
-        &mut self,
-        next: &root_switch::SystemInitConfig,
-    ) -> Result<bool, LaunchError> {
+    fn prepare_system_root(&mut self, next: &crate::profile::Handoff) -> Result<bool, LaunchError> {
         let prepared = (|| {
             let environment = crate::contracts::process::open_environment(
                 &self.launcher.authorities.root_directory,

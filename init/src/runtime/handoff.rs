@@ -18,12 +18,13 @@ use hyper_os::startup;
 use hyper_os::task::{ProcessBuilder, create_task_group};
 use hyper_os::wait::{ObjectSignals, WaitItem, wait_many};
 
-use super::{Runtime, root_switch::SystemInitConfig};
+use super::Runtime;
 use crate::manifest::{MAX_SERVICES, Manifest};
+use crate::profile::Handoff;
 use inventory::InventoryOffer;
 use metadata::PreparedOffer;
 
-const COMMIT: &[u8] = b"HYPER-INIT-HANDOFF/3";
+const COMMIT: &[u8] = b"HYPER-INIT-HANDOFF/4";
 const HANDOFF_TIMEOUT: Duration = Duration::from_secs(30);
 const ENDPOINT: startup::StartupPurpose<CapabilityChannelObject> =
     startup::StartupPurpose::new(0x8008_0001);
@@ -32,11 +33,7 @@ const _: () = assert!(MAX_SERVICES + 2 <= hyper_os::wait::MAX_ITEMS);
 /// Starts a candidate with no core supervisor or management authority. Only
 /// the final rendezvous grants its validated inventory. Duplicate group leases
 /// overlap until boot exits, so no zero-active-handles stop can race the move.
-pub(super) fn transfer(
-    runtime: &mut Runtime,
-    manifest: &Manifest<'_>,
-    next: &SystemInitConfig,
-) -> bool {
+pub(super) fn transfer(runtime: &mut Runtime, manifest: &Manifest<'_>, next: &Handoff) -> bool {
     match try_transfer(runtime, manifest, next) {
         Ok(committed) => committed,
         Err(error) => {
@@ -53,7 +50,7 @@ pub(super) fn transfer(
 fn try_transfer(
     runtime: &mut Runtime,
     manifest: &Manifest<'_>,
-    next: &SystemInitConfig,
+    next: &Handoff,
 ) -> hyper_os::Result<bool> {
     let a = &runtime.launcher.authorities;
     let candidate_group = create_task_group(a.factory.as_handle_ref(), a.domain.as_handle_ref())?;

@@ -35,7 +35,7 @@ const SYSTEM_GROUP: u16 = 30;
 const CONSOLE: u16 = 31;
 const BOOT_ENVIRONMENT: u16 = 32;
 const SYSTEM_ENVIRONMENT: u16 = 33;
-const IO_HANDOFF: u16 = 34;
+const STORAGE_HANDOFF: u16 = 34;
 const FILESYSTEM_HANDOFF: u16 = 35;
 const CONSOLE_DRAIN: u16 = 36;
 const ROOT_TRANSITION: u16 = 37;
@@ -120,8 +120,8 @@ impl<'a> InventoryOffer<'a> {
         if let Some(authority) = &a.vm_creation {
             offer.add(VM_AUTHORITY, authority.as_handle_ref())?;
         }
-        if let Some(endpoint) = &a.io_handoff {
-            offer.add(IO_HANDOFF, endpoint.as_handle_ref())?;
+        if let Some(endpoint) = &a.storage_handoff {
+            offer.add(STORAGE_HANDOFF, endpoint.as_handle_ref())?;
         }
         if let Some(endpoint) = &a.filesystem_handoff {
             offer.add(FILESYSTEM_HANDOFF, endpoint.as_handle_ref())?;

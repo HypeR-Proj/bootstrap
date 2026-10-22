@@ -13,23 +13,30 @@ only `phase: "boot"` and `loader: "bootstrap"` when those fields are present;
 it has no VM-fleet configuration or formal-service launch path. The mixed source
 templates above must be composed before deployment.
 
-The bootstrap graph starts the raw console, I/O runtime and filesystem manager.
+The default bootstrap graph starts the raw console, I/O runtime and filesystem manager.
 They read configuration through fixed bootstrap-environment capabilities. The
 bootstrap fstab mounts the independent system filesystem temporarily at `/system`.
 The system payload supplies `/boot`, `/tmp` and `/data` mountpoint directories.
-Stage-1 reads this policy from its own `/etc/hyper/init.json`:
+Stage-1 reads `/etc/hyper/boot-profiles/default.json`, or the profile selected by
+the firmware argument `hyper.boot-profile=NAME`:
 
 ```json
-{"system-root":"/system","put-old":"/boot","system-init":"/svc/component-manager"}
+{
+  "version": 1,
+  "services": "/etc/hyper/services.json",
+  "io": {"kind": "io-vm", "service": "io-runtime", "successor": "/io-runtime"},
+  "handoff": {"system-root": "/system", "put-old": "/boot", "system-init": "/svc/component-manager"},
+  "requires": ["/vm/io.itb"]
+}
 ```
 
 Stage-1 provisionally switches the namespace before starting system init.
 The system filesystem is now `/`, and
 bootstrap remains at `/boot`. No compatibility aliases or permanent `/system`
-wrapper are installed. The successor reads its own `/etc/hyper/init.json`:
+wrapper are installed. The successor reads its own `/etc/hyper/components.json`:
 
 ```json
-{"services":"/etc/hyper/services.json"}
+{"configuration_directory":"/etc/components","root":"root","startup":"/startup"}
 ```
 
 The candidate validates its graph, locks current mappings, and receives Process
@@ -47,7 +54,17 @@ implementations are independent. System init first adopts the live I/O VM and
 existing filesystem transports, then reads its own `/etc/fstab`, including the
 `/data` mount. GPT partition selectors are resolved by HypeR; format workers are
 selected from media magic and configured worker directories. Missing workers
-produce mount errors rather than hidden build-time filesystem dependencies.
+produce mount errors when selected by media probing. Explicit profile `requires`
+dependencies and all bootstrap service executables are checked against the boot
+archive during packaging, for every included profile. The generated default
+also declares the worker required by the board's system filesystem.
+
+Profiles can select `io.kind: "service"` for a different storage provider, or
+`"none"` for recovery or an independently established root. No I/O VM launches
+unless selected. A provider participating in handoff names a formal successor;
+formal startup policy must admit it and satisfy the capabilities its services
+require. The generic coordinator forwards the storage migration channel without
+parsing an I/O VM description. See [boot profiles](../../../../docs/boot-layout.md#boot-profiles).
 
 The formal graph starts `session-manager`, which creates `terminal-service` and
 `bin/sh`. `/etc/hyper/session.json` optionally selects relative terminal/shell

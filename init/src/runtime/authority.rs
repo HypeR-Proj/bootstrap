@@ -40,7 +40,7 @@ pub(super) struct AuthorityInventory {
     // Replaced for each launch; stdout/stderr of one service share one source.
     pub(super) service_output_channel: Option<OwnedHandle<ByteChannelObject>>,
     pub(super) console_drain: Option<OwnedHandle<ByteChannelObject>>,
-    pub(super) io_handoff: Option<OwnedHandle<CapabilityChannelObject>>,
+    pub(super) storage_handoff: Option<OwnedHandle<CapabilityChannelObject>>,
     pub(super) filesystem_handoff: Option<OwnedHandle<CapabilityChannelObject>>,
     pub(super) io_broker_server: Option<OwnedHandle<CapabilityChannelObject>>,
     pub(super) io_broker_client: Option<OwnedHandle<CapabilityChannelObject>>,

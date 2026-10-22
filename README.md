@@ -10,7 +10,7 @@ implementations and the formal executable loader remain in `lib/`.
 
 | Component | Responsibility |
 | --- | --- |
-| `init` | Start core services and transfer their supervision to system init |
+| `init` | Select a boot profile, start its services and transfer their supervision to system init |
 | `userspace-loader` | Load initial and core static ELF images under the minimal kernel entry contract |
 | `console-raw` | Byte-only physical Console transport and independent service log mirroring |
 | `fallback-sh` | Static recovery shell without clap, history or pipelines |
@@ -27,7 +27,21 @@ bootstrap workers in boot RAM and independent formal workers on the system root.
 `/etc/fstab` only; formal init applies `/etc/fstab` after taking supervision; stage-1 switches roots before launching it. The boot and formal worker search policies each use their
 own environment directory.
 Source placement does not force every worker into every RAM image. Missing
-workers produce a runtime mount error.
+workers declared as profile prerequisites are rejected during packaging;
+filesystem formats selected only by runtime media probing still report a mount
+error when their worker is unavailable.
+
+`/etc/hyper/boot-profiles/default.json` is required. Stage-1 interprets
+`hyper.boot-profile=NAME` from the kernel-supplied firmware command line to select
+another packaged profile. Each profile names its own service manifest and
+explicit storage provider. The built-in `io-vm` source starts the I/O VM; a
+`service` source can supply storage without VM authority, and `none` omits it.
+The handoff is independent of that choice: stage-1 establishes the independent
+root, while formal policy admits the selected provider's successor before
+ownership moves. Stage-1 does not interpret I/O VM migration payloads or select
+formal executables on the provider's behalf. See
+[boot profiles](../../docs/boot-layout.md#boot-profiles) for the schema and build
+validation boundary.
 
 Rust components own their `Cargo.toml` and `component.mk`. They belong to the
 independent [`Cargo.toml`](Cargo.toml) workspace here, with its own lockfile.

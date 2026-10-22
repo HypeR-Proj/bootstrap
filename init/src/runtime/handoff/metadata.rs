@@ -24,6 +24,7 @@ pub(super) struct PreparedOffer<'a> {
     boot_root: &'a str,
     services: Vec<CoreService<'a>>,
     pub(super) storage_ready: bool,
+    storage_successor: Option<String>,
     pub(super) slots: Vec<Slot>,
 }
 
@@ -51,27 +52,42 @@ impl<'a> PreparedOffer<'a> {
         )?;
         inventory.describe_processes(&runtime.supervisors)?;
         let mut services = super::reserved_vec(core.service_count())?;
-        for service in core.services() {
+        for (index, service) in core.services().enumerate() {
             services.push(CoreService {
                 name: service.name(),
                 image: service.image(),
                 critical: service.critical(),
-                provider: service.capabilities().find_map(|capability| {
-                    match capability.purpose() {
-                        "io.device-authority" => Some("io"),
-                        "filesystem.attach" => Some("filesystem"),
-                        "console.system" => Some("console"),
-                        _ => None,
-                    }
-                }),
+                provider: if runtime.launcher.storage_service == Some(index) {
+                    Some("storage")
+                } else {
+                    service
+                        .capabilities()
+                        .find_map(|capability| match capability.purpose() {
+                            "filesystem.attach" => Some("filesystem"),
+                            "console.system" => Some("console"),
+                            _ => None,
+                        })
+                },
             });
         }
+        let storage_successor = runtime
+            .storage_successor
+            .as_deref()
+            .map(|source| -> hyper_os::Result<String> {
+                let mut copy = String::new();
+                copy.try_reserve_exact(source.len())
+                    .map_err(|_| hyper_os::Error::Status(hyper_os::Status::NO_MEMORY))?;
+                copy.push_str(source);
+                Ok(copy)
+            })
+            .transpose()?;
         Ok(Self {
-            version: 3,
+            version: 4,
             root_mount: runtime.system_root_mount,
             boot_root,
             services,
             storage_ready: runtime.storage_ready,
+            storage_successor,
             slots: inventory.slots,
         })
     }
@@ -118,7 +134,7 @@ mod tests {
     #[test]
     fn bounded_encoding_counts_json_escapes_and_preserves_wire_shape() {
         let offer = PreparedOffer {
-            version: 3,
+            version: 4,
             root_mount: u64::MAX,
             boot_root: "/boot",
             services: vec![CoreService {
@@ -128,6 +144,7 @@ mod tests {
                 provider: Some("console"),
             }],
             storage_ready: true,
+            storage_successor: None,
             slots: Vec::new(),
         };
         let bytes = encode(&offer);
@@ -139,11 +156,12 @@ mod tests {
     fn oversized_offer_and_impossible_reservation_return_errors() {
         let oversized = "x".repeat(MAX_OFFER_BYTES);
         let offer = PreparedOffer {
-            version: 3,
+            version: 4,
             root_mount: 1,
             boot_root: &oversized,
             services: Vec::new(),
             storage_ready: false,
+            storage_successor: None,
             slots: Vec::new(),
         };
         assert!(matches!(

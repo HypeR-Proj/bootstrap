@@ -13,6 +13,7 @@
 pub mod bootstrap_policy;
 pub mod diagnostics;
 pub mod manifest;
+pub mod profile;
 pub mod supervision;
 
 pub mod runtime;

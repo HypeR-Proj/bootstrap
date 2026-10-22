@@ -33,3 +33,11 @@ path = "../../../tests/app/native-init.rs"
 doc = false
 test = false
 bench = false
+
+# Opaque storage-provider migration probe, built only by test-boot-profiles.
+[[bin]]
+name = "hyper-profile-storage-probe"
+path = "../../../tests/app/profile-storage.rs"
+doc = false
+test = false
+bench = false

@@ -17,6 +17,7 @@ use super::supervisor::SupervisorSet;
 pub(super) struct ServiceLauncher {
     pub(super) authorities: AuthorityInventory,
     pub(super) handoff_enabled: bool,
+    pub(super) storage_service: Option<usize>,
 }
 
 impl ServiceLauncher {
@@ -93,10 +94,7 @@ impl ServiceLauncher {
 
         // Private lifecycle endpoints are injected by the predecessor, not
         // exposed as service-grant policy or business client connections.
-        let purpose = if plan
-            .unique_service_for_purpose(startup::DEVICE_ASSIGNMENT_AUTHORITY.as_raw())
-            == Some(service_index)
-        {
+        let purpose = if self.storage_service == Some(service_index) {
             Some((0x8008_0010, false))
         } else if plan.unique_service_for_purpose(crate::contracts::filesystem::ATTACH.as_raw())
             == Some(service_index)
@@ -108,18 +106,14 @@ impl ServiceLauncher {
         if let Some((purpose, filesystem)) = purpose.filter(|_| self.handoff_enabled) {
             let (old, successor) = hyper_os::capability_channel::CapabilityChannel::create()
                 .map_err(LaunchError::service_resources)?;
-            let rights = if filesystem {
-                Rights::READ.union(Rights::WRITE).union(Rights::WAIT)
-            } else {
-                Rights::WRITE.union(Rights::WAIT)
-            };
+            let rights = Rights::READ.union(Rights::WRITE).union(Rights::WAIT);
             builder
                 .add_handle_move(old.into_handle(), purpose, RightsOffer::Exact(rights))
                 .map_err(|failure| LaunchError::service_resources(failure.error()))?;
             if filesystem {
                 self.authorities.filesystem_handoff = Some(successor.into_handle());
             } else {
-                self.authorities.io_handoff = Some(successor.into_handle());
+                self.authorities.storage_handoff = Some(successor.into_handle());
             }
         }
         if self.handoff_enabled

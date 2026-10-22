@@ -20,7 +20,7 @@ impl Runtime {
         // their state and resume ordinary bootstrap administration. Keeping
         // these peers alive would deadlock recovery mount requests behind an
         // adoption descriptor that nobody will receive.
-        self.launcher.authorities.io_handoff.take();
+        self.launcher.authorities.storage_handoff.take();
         self.launcher.authorities.filesystem_handoff.take();
         // The physical worker must have consumed its startup endpoints. If it
         // never launched, binding a recovery stream would wait forever.
