@@ -33,7 +33,7 @@ pub fn run(startup: &mut Startup<'_>) -> Result<(), Error> {
     let command_line = startup
         .take_boot_command_line()
         .map_err(|error| Error::source("boot command line", format_args!("{error:?}")))?;
-    let selected = crate::profile::select(command_line.as_deref().unwrap_or(""))
+    let (selected, remaining) = crate::profile::select(command_line.as_deref().unwrap_or(""))
         .map_err(|error| Error::source("boot profile selector", error))?;
     let profile_path = format!("{}/{selected}.json", crate::profile::DIRECTORY);
     let profile =
@@ -50,10 +50,12 @@ pub fn run(startup: &mut Startup<'_>) -> Result<(), Error> {
         .storage_service(&manifest)
         .map_err(|error| Error::source(&profile_path, error))?;
     runtime.storage_successor = profile.io.successor().map(str::to_owned);
+    runtime.command_line = remaining;
     report::write(
         &runtime.launcher.authorities.console,
         format_args!("boot profile: {selected}\n"),
     );
+    drop(command_line);
     runtime
         .launch_validated_graph(&manifest, &plan, profile.handoff.as_ref())
         .map_err(|error| {
@@ -106,6 +108,9 @@ struct Runtime {
     boot_libraries: Option<Directory>,
     system_root_mount: u64,
     storage_successor: Option<String>,
+    /// Retained through reversible handoff attempts; each candidate gets a
+    /// fresh read-only copy and closes its startup handle after reading it.
+    command_line: String,
 }
 
 impl Runtime {
@@ -187,6 +192,7 @@ impl Runtime {
             boot_libraries: None,
             system_root_mount: 0,
             storage_successor: None,
+            command_line: String::new(),
             supervisors: SupervisorSet {
                 processes: std::array::from_fn(|_| None),
             },

@@ -32,8 +32,10 @@ filesystem formats selected only by runtime media probing still report a mount
 error when their worker is unavailable.
 
 `/etc/hyper/boot-profiles/default.json` is required. Stage-1 interprets
-`hyper.boot-profile=NAME` from the kernel-supplied firmware command line to select
-another packaged profile. Each profile names its own service manifest and
+`hyper.boot-profile=NAME` from the arguments left by the kernel to select
+another packaged profile. Stage-1 closes the received boot-argument handle after
+reading it, and passes unrecognized arguments to system init in a new read-only
+VMO. Each profile names its own service manifest and
 explicit storage provider. The built-in `io-vm` source starts the I/O VM; a
 `service` source can supply storage without VM authority, and `none` omits it.
 The handoff is independent of that choice: stage-1 establishes the independent

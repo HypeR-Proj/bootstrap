@@ -76,6 +76,13 @@ fn try_transfer(
     )?;
     builder.set_name(next.system_init.rsplit('/').next().unwrap_or("system-root"))?;
     builder.add_argument(&next.system_init)?;
+    builder
+        .add_handle_move(
+            startup::create_boot_command_line(&runtime.command_line)?,
+            startup::BOOT_COMMAND_LINE.as_raw(),
+            RightsOffer::Exact(Rights::READ.union(Rights::INSPECT)),
+        )
+        .map_err(|failure| failure.into_parts().0)?;
     builder.set_memory_lock_allowed(true)?;
     builder.add_handle_duplicate(
         a.root_directory.as_handle_ref(),

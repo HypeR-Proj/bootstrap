@@ -243,20 +243,26 @@ impl AuthorityPolicy for ProfilePolicy<'_> {
 
 /// Unknown selectors never fall back to another profile. Names cannot escape
 /// the profile directory, and duplicate selectors are rejected as ambiguous.
-pub fn select(command_line: &str) -> Result<&str, String> {
+/// Returns the selected name and the unrecognized arguments for the successor.
+pub fn select(command_line: &str) -> Result<(&str, String), String> {
     let mut selected = None;
+    let mut remaining = String::new();
     for word in command_line.split_ascii_whitespace() {
         if word == "hyper.boot-profile" {
             return Err("hyper.boot-profile requires a name".into());
         }
         let Some(name) = word.strip_prefix("hyper.boot-profile=") else {
+            if !remaining.is_empty() {
+                remaining.push(' ');
+            }
+            remaining.push_str(word);
             continue;
         };
         if !identifier(name) || selected.replace(name).is_some() {
             return Err("invalid or repeated hyper.boot-profile selector".into());
         }
     }
-    Ok(selected.unwrap_or(DEFAULT))
+    Ok((selected.unwrap_or(DEFAULT), remaining))
 }
 
 fn identifier(name: &str) -> bool {

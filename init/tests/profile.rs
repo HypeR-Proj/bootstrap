@@ -44,11 +44,14 @@ fn manifest(vm: bool) -> serde_json::Value {
 
 #[test]
 fn selector_is_defaulted_bounded_and_unambiguous() {
-    assert_eq!(select("").as_deref(), Ok("default"));
-    assert_eq!(select("earlycon=x nokaslr").as_deref(), Ok("default"));
+    assert_eq!(select(""), Ok(("default", String::new())));
     assert_eq!(
-        select("hyper.boot-profile=native-disk_2 loglevel=7").as_deref(),
-        Ok("native-disk_2")
+        select("flag=one flag=two"),
+        Ok(("default", "flag=one flag=two".into()))
+    );
+    assert_eq!(
+        select("hyper.boot-profile=native-disk_2 loglevel=7"),
+        Ok(("native-disk_2", "loglevel=7".into()))
     );
     for command in [
         "hyper.boot-profile",
@@ -62,6 +65,23 @@ fn selector_is_defaulted_bounded_and_unambiguous() {
         assert!(select(command).is_err(), "{command}");
     }
     assert!(select(&format!("hyper.boot-profile={}", "a".repeat(64))).is_err());
+}
+
+#[test]
+fn profile_consumes_only_its_selector_and_preserves_unknown_arguments() -> Result<(), String> {
+    let (name, remaining) = select(
+        "\tbefore=one hyper.boot-profile=alternate\nflag before=two hyper.boot-profile-extra=x value=a=b unicode=λ  ",
+    )?;
+    assert_eq!(name, "alternate");
+    assert_eq!(
+        remaining,
+        "before=one flag before=two hyper.boot-profile-extra=x value=a=b unicode=λ"
+    );
+    assert_eq!(
+        select("hyper.boot-profile=default")?,
+        ("default", String::new())
+    );
+    Ok(())
 }
 
 #[test]
