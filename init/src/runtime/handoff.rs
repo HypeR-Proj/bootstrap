@@ -137,7 +137,8 @@ fn try_transfer(
         a.factory.as_handle_ref(),
         startup::TASK_FACTORY.as_raw(),
         RightsOffer::Exact(
-            Rights::CREATE_PROCESS
+            hyper_os::scheduling::RIGHTS
+                .union(Rights::CREATE_PROCESS)
                 .union(Rights::LOCK_MEMORY)
                 .union(Rights::RETAIN_PROCESS),
         ),

@@ -53,6 +53,7 @@ pub struct Image {
     pub memory: WritableVmo,
     pub plan: linux::BootPlan,
     pub arguments: String,
+    scheduling: Option<super::scheduling::Scheduling>,
     affinity: Vec<super::affinity::Affinity>,
 }
 struct Source {
@@ -110,6 +111,7 @@ impl Image {
             plan,
             arguments: image.boot_arguments.as_str().into(),
             affinity: definition.configuration.affinity.clone(),
+            scheduling: definition.configuration.scheduling,
         })
     }
     pub fn device_tree(&self, gic_version: u32, devices: IoDevices<'_>) -> Result<()> {
@@ -277,6 +279,11 @@ pub fn install_mapped(
             .ok_or(hyper_os::Error::InvalidResponse)?;
         vm::set_vcpu_affinity(cpu.as_handle_ref(), words)
     })?;
+    if let Some(scheduling) = image.scheduling {
+        for cpu in &cpus {
+            scheduling.apply(cpu.as_handle_ref()).map_err(show)?;
+        }
+    }
     Ok(InstalledGuest {
         name: image.name.clone(),
         image: image.path.clone(),

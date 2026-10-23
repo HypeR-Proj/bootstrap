@@ -242,6 +242,10 @@ impl AuthorityPolicy for BootstrapPolicy {
             "protect" => Some(Rights::PROTECT.bits()),
             "set-attributes" => Some(Rights::SET_ATTRIBUTES.bits()),
             "lock-file" => Some(Rights::LOCK_FILE.bits()),
+            "sched-lower" => Some(Rights::SCHED_LOWER.bits()),
+            "sched-priority" => Some(Rights::SCHED_PRIORITY.bits()),
+            "sched-class" => Some(Rights::SCHED_CLASS.bits()),
+            "sched-budget" => Some(Rights::SCHED_BUDGET.bits()),
             "create-process" => Some(Rights::CREATE_PROCESS.bits()),
             "retain-process" => Some(Rights::RETAIN_PROCESS.bits()),
             "create-task-group" => Some(Rights::CREATE_TASK_GROUP.bits()),
@@ -334,7 +338,8 @@ const fn library_directory_rights() -> Rights {
 }
 
 const fn task_factory_rights() -> Rights {
-    Rights::DUPLICATE
+    hyper_os::scheduling::RIGHTS
+        .union(Rights::DUPLICATE)
         .union(Rights::TRANSFER)
         .union(Rights::INSPECT)
         .union(Rights::CREATE_PROCESS)
@@ -359,7 +364,8 @@ const fn resource_domain_rights() -> Rights {
 }
 
 const fn vm_authority_rights() -> Rights {
-    Rights::DUPLICATE
+    hyper_os::scheduling::RIGHTS
+        .union(Rights::DUPLICATE)
         .union(Rights::TRANSFER)
         .union(Rights::INSPECT)
         .union(Rights::DERIVE)

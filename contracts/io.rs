@@ -21,7 +21,8 @@ pub const STARTUP_CONTRACTS: &[StartupContract] = &[
         "vm.creation-authority",
         startup::VIRTUAL_MACHINE_CREATION_AUTHORITY,
         Rights::DERIVE.union(Rights::CREATE_VIRTUAL_MACHINE),
-    ),
+    )
+    .with_optional_rights(hyper_os::scheduling::RIGHTS),
     READY_CONTRACT,
     BROKER_SERVER_CONTRACT,
     crate::contracts::filesystem::PROVIDER_CONTRACT,

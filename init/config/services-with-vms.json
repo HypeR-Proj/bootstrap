@@ -333,7 +333,11 @@
           "operation": "duplicate",
           "rights": [
             "derive",
-            "create-virtual-machine"
+            "create-virtual-machine",
+            "sched-lower",
+            "sched-priority",
+            "sched-class",
+            "sched-budget"
           ]
         },
         {
@@ -412,7 +416,11 @@
           "operation": "duplicate",
           "rights": [
             "derive",
-            "create-virtual-machine"
+            "create-virtual-machine",
+            "sched-lower",
+            "sched-priority",
+            "sched-class",
+            "sched-budget"
           ]
         },
         {

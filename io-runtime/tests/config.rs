@@ -326,3 +326,27 @@ fn rp1_uplink_requires_pi_firmware_and_cannot_be_a_storage_controller() {
     source["boot"] = json!("rpi5-firmware");
     assert!(parse(&source).is_err());
 }
+
+#[test]
+fn scheduling_role_can_preserve_kernel_policy_but_invalid_budgets_fail_admission() {
+    let mut source = board();
+    source["io-vm"]["configuration"]["scheduling"] = json!({"band":64,"role":"priority"});
+    let config = parse(&source).unwrap();
+    assert!(
+        config
+            .definition()
+            .configuration
+            .scheduling
+            .unwrap()
+            .policy
+            .is_none()
+    );
+    for invalid in [
+        json!(null),
+        json!({"band":64,"role":"priority","policy":null}),
+        json!({"band":64,"role":"priority","policy":{"kind":"budget","budget_ns":11,"period_ns":10,"burst_ns":1}}),
+    ] {
+        source["io-vm"]["configuration"]["scheduling"] = invalid;
+        assert!(parse(&source).is_err());
+    }
+}

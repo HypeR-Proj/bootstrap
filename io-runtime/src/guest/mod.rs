@@ -13,6 +13,7 @@ pub mod install;
 pub mod profile;
 #[cfg(any(test, all(target_os = "hyper", target_arch = "aarch64")))]
 mod read_cache;
+mod scheduling;
 
 use affinity::Affinity;
 use serde::Deserialize;
@@ -61,6 +62,8 @@ pub struct Configuration {
     pub bootargs: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub affinity: Vec<Affinity>,
+    #[serde(default, deserialize_with = "scheduling::present")]
+    pub scheduling: Option<scheduling::Scheduling>,
 }
 impl Configuration {
     pub fn image_configuration(&self) -> Result<crate::image::Configuration, String> {
@@ -70,6 +73,9 @@ impl Configuration {
             return Err("VM requires 1..=8 vCPUs".into());
         }
         affinity::masks(&self.affinity, self.vcpus)?;
+        if let Some(scheduling) = self.scheduling {
+            scheduling.validate()?;
+        }
         if self.memory_bytes < 64 * 1024 * 1024 || !self.memory_bytes.is_power_of_two() {
             return Err("VM memory-bytes must be a power of two of at least 64 MiB".into());
         }

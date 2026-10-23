@@ -10,6 +10,7 @@ fn admission_rejects_foreign_itb_architecture_with_diagnostic() {
         vcpus: 1,
         bootargs: String::new(),
         affinity: Vec::new(),
+        scheduling: None,
     };
     for (name, architecture) in [
         ("aarch64", Architecture::Aarch64),
