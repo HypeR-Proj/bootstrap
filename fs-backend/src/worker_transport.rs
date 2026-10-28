@@ -7,6 +7,7 @@
 
 use hyper_filesystem::protocol::{self, Entry, Error, Operation, Request, Response};
 use hyper_os::{
+    block::BlockQueue,
     handle::ByteChannelObject,
     startup::Startup,
     wait::{self, ObjectSignals, WaitItem},
@@ -25,11 +26,31 @@ pub trait Volume {
 
     fn read(&mut self, path: &str, offset: u64, output: &mut [u8]) -> Result<usize, Error>;
 
+    fn read_extents(
+        &mut self,
+        _path: &str,
+        _offset: u64,
+        _length: usize,
+        _output: &mut [u8],
+    ) -> Result<usize, Error> {
+        Err(Error::Unsupported)
+    }
+
     fn readlink(&mut self, _path: &str, _output: &mut [u8]) -> Result<usize, Error> {
         Err(Error::Unsupported)
     }
 
     fn write(&mut self, path: &str, offset: u64, input: &[u8]) -> Result<usize, Error>;
+
+    fn write_window(
+        &mut self,
+        path: &str,
+        offset: u64,
+        input: &[u8],
+        _token: u64,
+    ) -> Result<usize, Error> {
+        self.write(path, offset, input)
+    }
 
     fn create(&mut self, path: &str, directory: bool) -> Result<(), Error>;
 
@@ -63,13 +84,19 @@ pub struct Transport {
     owner: hyper_os::handle::OwnedHandle<ByteChannelObject>,
     server: hyper_os::handle::OwnedHandle<ByteChannelObject>,
     buffer: hyper_os::filesystem::SharedBuffer,
+    window: hyper_os::filesystem::ReadonlyBuffer,
+    queue: BlockQueue,
     sequence: u64,
 }
 
 /// Offer the transport to the manager, then serve only ordered kernel requests.
 /// Success requires an explicit stop command; parent or transport death is an
 /// error and never permits reusing a possibly unfinished block transaction.
-pub fn serve(startup: &mut Startup<'_>, volume: &mut impl Volume) -> Result<WorkerReturn, String> {
+pub fn serve(
+    startup: &mut Startup<'_>,
+    volume: &mut impl Volume,
+    queue: BlockQueue,
+) -> Result<WorkerReturn, String> {
     use crate::contracts::filesystem;
     use hyper_os::{
         capability_channel::{CapabilityChannel, CapabilityDisposition},
@@ -81,6 +108,12 @@ pub fn serve(startup: &mut Startup<'_>, volume: &mut impl Volume) -> Result<Work
     let (client, server) = hyper_os::channel::create_pair().map_err(show)?;
     let buffer = hyper_os::filesystem::SharedBuffer::create(
         startup.borrow(hyper_os::startup::ROOT_VMAR).map_err(show)?,
+        protocol::DATA_BYTES,
+    )
+    .map_err(show)?;
+    let window = hyper_os::filesystem::SharedBuffer::from_readonly_memory(
+        startup.borrow(hyper_os::startup::ROOT_VMAR).map_err(show)?,
+        queue.create_window().map_err(show)?,
         protocol::DATA_BYTES,
     )
     .map_err(show)?;
@@ -100,6 +133,11 @@ pub fn serve(startup: &mut Startup<'_>, volume: &mut impl Volume) -> Result<Work
                 RightsOffer::Exact(filesystem::BUFFER_RIGHTS),
             )
             .map_err(show)?,
+            CapabilityDisposition::duplicate(
+                queue.as_handle_ref(),
+                RightsOffer::Exact(filesystem::QUEUE_RIGHTS),
+            )
+            .map_err(show)?,
         ];
         crate::contracts::io::send_capabilities(
             &control,
@@ -115,6 +153,8 @@ pub fn serve(startup: &mut Startup<'_>, volume: &mut impl Volume) -> Result<Work
             owner,
             server,
             buffer,
+            window,
+            queue,
             sequence: 0,
         },
         volume,
@@ -128,6 +168,8 @@ fn serve_transport(state: Transport, volume: &mut impl Volume) -> Result<WorkerR
         owner,
         server,
         mut buffer,
+        window,
+        queue,
         mut sequence,
     } = state;
     let mut bytes = vec![0; protocol::REQUEST_BYTES];
@@ -167,6 +209,8 @@ fn serve_transport(state: Transport, volume: &mut impl Volume) -> Result<WorkerR
                     owner,
                     server,
                     buffer,
+                    window,
+                    queue,
                     sequence,
                 }));
             }
@@ -191,7 +235,13 @@ fn serve_transport(state: Transport, volume: &mut impl Volume) -> Result<WorkerR
         sequence = request.sequence;
         // SAFETY: The received request transfers exclusive ownership of this
         // shared byte range. Kernel waits for the reply before accessing it.
-        let result = dispatch(volume, request, unsafe { buffer.bytes_mut() }, &mut reply)?;
+        let result = dispatch(
+            volume,
+            request,
+            unsafe { buffer.bytes_mut() },
+            unsafe { window.bytes() },
+            &mut reply,
+        )?;
         server.as_byte_channel().send(&reply).map_err(show)?;
         if result.is_some_and(Error::terminal) {
             return Err("filesystem backend failed".into());
@@ -223,6 +273,7 @@ pub fn return_block(
         }
         WorkerReturn::Handoff(state) => {
             let mut server = Some(state.server);
+            let mut queue = Some(state.queue.into_handle());
             let mut offers = [
                 CapabilityDisposition::move_handle(
                     &mut block,
@@ -239,6 +290,11 @@ pub fn return_block(
                     RightsOffer::Exact(crate::contracts::filesystem::SERVER_BUFFER_RIGHTS),
                 )
                 .map_err(show)?,
+                CapabilityDisposition::move_handle(
+                    &mut queue,
+                    RightsOffer::Exact(crate::contracts::filesystem::QUEUE_RIGHTS),
+                )
+                .map_err(show)?,
             ];
             let mut record = [0; 16];
             record[..8].copy_from_slice(crate::contracts::filesystem::WORKER_STATE);
@@ -251,6 +307,7 @@ pub fn return_block(
             )
             .map_err(show)?;
             drop(state.buffer);
+            drop(state.window);
             drop(state.owner);
             drop(state.control);
             // Only system init decides when the old process retires. The
@@ -266,6 +323,7 @@ fn dispatch(
     volume: &mut impl Volume,
     request: Request<'_>,
     data: &mut [u8],
+    window: &[u8],
     reply: &mut [u8; protocol::RESPONSE_BYTES],
 ) -> Result<Option<Error>, String> {
     let mut entry = Entry::empty();
@@ -303,6 +361,15 @@ fn dispatch(
                 )
                 .map(|n| n as u64)
         }
+        Operation::ReadExtents => {
+            let length = usize::try_from(request.length).map_err(|_| Error::InvalidInput)?;
+            if length > protocol::DATA_BYTES || !request.target.is_empty() {
+                return Err(Error::InvalidInput);
+            }
+            volume
+                .read_extents(request.path, request.offset, length, data)
+                .map(|n| n as u64)
+        }
         Operation::ReadLink => {
             let length = usize::try_from(request.length).map_err(|_| Error::InvalidInput)?;
             volume
@@ -313,12 +380,16 @@ fn dispatch(
                 .map(|n| n as u64)
         }
         Operation::Write => {
+            if request.window_token == 0 {
+                return Err(Error::InvalidInput);
+            }
             let length = usize::try_from(request.length).map_err(|_| Error::InvalidInput)?;
             volume
-                .write(
+                .write_window(
                     request.path,
                     request.offset,
-                    data.get(..length).ok_or(Error::InvalidInput)?,
+                    window.get(..length).ok_or(Error::InvalidInput)?,
+                    request.window_token,
                 )
                 .map(|n| n as u64)
         }

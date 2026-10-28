@@ -19,6 +19,47 @@ pub(crate) struct Inode {
 }
 
 impl Inode {
+    pub fn read_extents(
+        self,
+        sb: &Superblock,
+        offset: u64,
+        requested: usize,
+        output: &mut hyper_filesystem::protocol::ReadExtentPlanBuilder<'_>,
+    ) -> Result<(), Error> {
+        if offset >= self.size || requested == 0 {
+            return Ok(());
+        }
+        let length = (self.size - offset).min(requested as u64) as usize;
+        let boundary = if self.inline.is_some() {
+            self.size / sb.block_size as u64 * sb.block_size as u64
+        } else {
+            self.size
+        };
+        let external = boundary.saturating_sub(offset).min(length as u64) as usize;
+        if external != 0
+            && !output
+                .push(
+                    self.data.checked_add(offset).ok_or(Error::Corrupt)?,
+                    external,
+                )
+                .ok_or(Error::Corrupt)?
+        {
+            return Ok(());
+        }
+        if external < length {
+            let position = offset + external as u64 - boundary;
+            let start = self
+                .inline
+                .ok_or(Error::Corrupt)?
+                .checked_add(position)
+                .ok_or(Error::Corrupt)?;
+            output
+                .push(start, length - external)
+                .ok_or(Error::Corrupt)?;
+        }
+        Ok(())
+    }
+
     pub fn load<D: Device>(
         reader: &mut Reader<D>,
         sb: &Superblock,

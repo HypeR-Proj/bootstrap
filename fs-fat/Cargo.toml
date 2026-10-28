@@ -22,3 +22,6 @@ fatfs = { path = "../../../third_party/rust-fatfs", default-features = false, fe
 
 [lints]
 workspace = true
+
+[features]
+block-queue-test = []

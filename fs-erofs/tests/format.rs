@@ -532,3 +532,26 @@ fn provider_reopen_preserves_directory_cursor() -> Result<(), Error> {
     assert_eq!(&bytes[..length], expected);
     Ok(())
 }
+
+#[test]
+fn read_plans_cover_external_inline_unaligned_and_eof() -> Result<(), Error> {
+    use hyper_filesystem::protocol::{EXTENT_PLAN_BYTES, ReadExtentPlan};
+    let image = fixture();
+    let mut volume = Volume::mount(Memory(image.clone()))?;
+    for (path, offset, length) in [("big", 4093, 4107), ("small", 1, 17), ("big", 8193, 64)] {
+        let mut bytes = [0; EXTENT_PLAN_BYTES];
+        let count = volume.read_extents(path, offset, length, &mut bytes)?;
+        let plan = ReadExtentPlan::decode(&bytes[..count], length).ok_or(Error::Corrupt)?;
+        let mut actual = vec![];
+        for extent in plan.extents() {
+            actual.extend_from_slice(
+                &image[extent.offset as usize..(extent.offset + extent.length) as usize],
+            );
+        }
+        let mut expected = vec![0; length];
+        let count = volume.read(path, offset, &mut expected)?;
+        assert_eq!(plan.length(), count);
+        assert_eq!(actual, expected[..count]);
+    }
+    Ok(())
+}

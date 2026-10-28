@@ -8,7 +8,9 @@ use core::mem::MaybeUninit;
 use hyper_fs_backend::transfer::{self, Description, Mount, Volume};
 use hyper_os::{
     capability_channel::{CapabilityChannel, CapabilityDisposition, CapabilityReceiveSlot},
-    handle::{ByteChannelObject, NativeBlockObject, Rights, RightsOffer, VmoObject},
+    handle::{
+        BlockQueueObject, ByteChannelObject, NativeBlockObject, Rights, RightsOffer, VmoObject,
+    },
     memory::{PAGE_SIZE, SnapshotVmo, WritableVmo},
 };
 
@@ -41,6 +43,7 @@ pub(super) fn export(
                 CapabilityReceiveSlot::new::<NativeBlockObject>(hyper_os::block::RIGHTS),
                 CapabilityReceiveSlot::new::<ByteChannelObject>(filesystem::TRANSPORT_RIGHTS),
                 CapabilityReceiveSlot::new::<VmoObject>(filesystem::SERVER_BUFFER_RIGHTS),
+                CapabilityReceiveSlot::new::<BlockQueueObject>(filesystem::QUEUE_RIGHTS),
             ];
             let mut bytes = [MaybeUninit::uninit(); 16];
             let message = worker
@@ -49,19 +52,21 @@ pub(super) fn export(
                 .map_err(show)?;
             if message.bytes().len() != 16
                 || &message.bytes()[..8] != filesystem::WORKER_STATE
-                || message.capability_count() != 3
+                || message.capability_count() != 4
             {
                 return Err("invalid drained filesystem worker state".into());
             }
             let mut block = slots[0].take::<NativeBlockObject>().map_err(show)?;
             let mut server = slots[1].take::<ByteChannelObject>().map_err(show)?;
             let mut shared = slots[2].take::<VmoObject>().map_err(show)?;
+            let mut queue = slots[3].take::<BlockQueueObject>().map_err(show)?;
             retired_worker_leases.push(worker.export(
                 &endpoint,
                 message.bytes(),
                 &mut block,
                 &mut server,
                 &mut shared,
+                &mut queue,
             )?);
         } else {
             let mut block = Some(

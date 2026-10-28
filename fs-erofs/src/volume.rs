@@ -142,6 +142,29 @@ impl<D: Device> Volume<D> {
         inode.read(&mut self.reader, &self.superblock, offset, output)
     }
 
+    /// Describe core-format file bytes, including physical inline tails. The
+    /// kernel reads these ranges into private request/cache pages; the worker
+    /// never receives writable mappings of those destinations.
+    pub fn read_extents(
+        &mut self,
+        path: &str,
+        offset: u64,
+        length: usize,
+        output: &mut [u8],
+    ) -> Result<usize, Error> {
+        use hyper_filesystem::protocol::{DATA_BYTES, ReadExtentPlanBuilder};
+        if length > DATA_BYTES {
+            return Err(Error::InvalidInput);
+        }
+        let inode = self.lookup(path)?;
+        if inode.kind != Kind::File {
+            return Err(Error::InvalidInput);
+        }
+        let mut plan = ReadExtentPlanBuilder::new(output).ok_or(Error::InvalidInput)?;
+        inode.read_extents(&self.superblock, offset, length, &mut plan)?;
+        Ok(plan.finish())
+    }
+
     /// Return the stored link bytes verbatim; do not join or normalize a target.
     pub fn readlink(&mut self, path: &str, output: &mut [u8]) -> Result<usize, Error> {
         let inode = self.lookup(path)?;

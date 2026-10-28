@@ -15,8 +15,8 @@ use hyper_os::{
     capability_channel::{CapabilityChannel, CapabilityReceiveSlot},
     fs::{Directory, File},
     handle::{
-        ByteChannelObject, NativeBlockObject, OwnedHandle, ProcessObject, ResourceDomainObject,
-        Rights, RightsOffer, TaskGroupObject, VmoObject,
+        BlockQueueObject, ByteChannelObject, NativeBlockObject, OwnedHandle, ProcessObject,
+        ResourceDomainObject, Rights, RightsOffer, TaskGroupObject, VmoObject,
     },
     startup::{self, Startup},
     task::{
@@ -54,6 +54,7 @@ pub(super) struct Worker {
     pub(super) owner: OwnedHandle<ByteChannelObject>,
     pub(super) channel: Option<OwnedHandle<ByteChannelObject>>,
     pub(super) buffer: Option<OwnedHandle<VmoObject>>,
+    pub(super) queue: Option<OwnedHandle<BlockQueueObject>>,
     pub(super) published: bool,
     pub(super) mount_id: Option<u64>,
     pub target: String,
@@ -176,11 +177,12 @@ impl Worker {
             let mut slots = [
                 CapabilityReceiveSlot::new::<ByteChannelObject>(filesystem::TRANSPORT_RIGHTS),
                 CapabilityReceiveSlot::new::<VmoObject>(filesystem::BUFFER_RIGHTS),
+                CapabilityReceiveSlot::new::<BlockQueueObject>(filesystem::QUEUE_RIGHTS),
             ];
             let message = control
                 .receive(deadline()?, &mut bytes, &mut slots)
                 .map_err(show)?;
-            if message.bytes() != filesystem::WORKER_READY || message.capability_count() != 2 {
+            if message.bytes() != filesystem::WORKER_READY || message.capability_count() != 3 {
                 return Err("invalid filesystem worker handshake".into());
             }
             let channel = slots[0]
@@ -191,9 +193,13 @@ impl Worker {
                 .take::<VmoObject>()
                 .map_err(show)?
                 .ok_or("missing filesystem buffer")?;
-            Ok((channel, buffer))
+            let queue = slots[2]
+                .take::<BlockQueueObject>()
+                .map_err(show)?
+                .ok_or("missing filesystem block queue")?;
+            Ok((channel, buffer, queue))
         })();
-        let (channel, buffer) = match prepared {
+        let (channel, buffer, queue) = match prepared {
             Ok(value) => value,
             Err(error) => {
                 drop(owner);
@@ -211,6 +217,7 @@ impl Worker {
             owner,
             channel: Some(channel),
             buffer: Some(buffer),
+            queue: Some(queue),
             published: false,
             mount_id: None,
             target: entry.target.clone(),
@@ -228,6 +235,12 @@ impl Worker {
                 .as_ref()
                 .ok_or("missing filesystem buffer")?
                 .as_handle_ref(),
+            Some(
+                self.queue
+                    .as_ref()
+                    .ok_or("missing filesystem block queue")?
+                    .as_handle_ref(),
+            ),
             root.as_handle_ref(),
             &self.target,
             read_only,
@@ -261,6 +274,7 @@ impl Worker {
         block: &mut Option<OwnedHandle<NativeBlockObject>>,
         server: &mut Option<OwnedHandle<ByteChannelObject>>,
         shared: &mut Option<OwnedHandle<VmoObject>>,
+        queue: &mut Option<OwnedHandle<BlockQueueObject>>,
     ) -> Result<
         (
             OwnedHandle<TaskGroupObject>,
@@ -300,6 +314,8 @@ impl Worker {
                 RightsOffer::Exact(hyper_fs_backend::transfer::PROCESS_RIGHTS),
             )
             .map_err(show)?,
+            CapabilityDisposition::move_handle(queue, RightsOffer::Exact(filesystem::QUEUE_RIGHTS))
+                .map_err(show)?,
         ];
         crate::contracts::io::send_capabilities(
             endpoint,

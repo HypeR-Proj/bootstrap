@@ -16,7 +16,7 @@ use hyper_filesystem::{
     protocol::{self, Entry, Error},
 };
 use hyper_fs_erofs::{Device as ReadDevice, Error as MediaError, Kind};
-use hyper_os::block::NativeBlock;
+use hyper_os::block::{NativeBlock, QueueConfig};
 use worker_transport::Volume;
 
 struct Device {
@@ -75,6 +75,18 @@ impl Volume for Erofs {
     ) -> Result<usize, Error> {
         self.0
             .read_directory(path, cursor, output)
+            .map_err(map_error)
+    }
+
+    fn read_extents(
+        &mut self,
+        path: &str,
+        offset: u64,
+        length: usize,
+        output: &mut [u8],
+    ) -> Result<usize, Error> {
+        self.0
+            .read_extents(path, offset, length, output)
             .map_err(map_error)
     }
 
@@ -158,9 +170,11 @@ fn run() -> Result<(), String> {
             .take(crate::contracts::filesystem::BLOCK)
             .map_err(show)?,
     );
+    let queue = block.create_queue(QueueConfig::default()).map_err(show)?;
+
     let bytes = sectors.checked_mul(512).ok_or("invalid volume geometry")?;
     let mut volume = Erofs(hyper_fs_erofs::Volume::mount(Device { block, bytes }).map_err(show)?);
-    let completion = worker_transport::serve(&mut startup, &mut volume)?;
+    let completion = worker_transport::serve(&mut startup, &mut volume, queue)?;
     worker_transport::return_block(completion, volume.0.into_device().block)
 }
 
