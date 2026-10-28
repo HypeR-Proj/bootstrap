@@ -80,7 +80,7 @@ impl Image {
             .metadata()
             .map_err(|error| format!("stat {path}: {error}"))?
             .len();
-        let source = super::read_cache::CachedSource::new(Source { file, length }).map_err(show)?;
+        let source = hyper_os::fs::BufferedReader::new(Source { file, length }).map_err(show)?;
         let image = crate::image::parse(&source).map_err(show)?;
         let image = super::image::configure(image, &definition.configuration)?;
         let plan = linux::validate_reference(&source, image).map_err(show)?;
@@ -153,7 +153,7 @@ fn copy_payload(source: &Source, memory: &WritableVmo, payload: Payload) -> Resu
         .load_address
         .checked_sub(RAM_BASE)
         .ok_or("payload below RAM")?;
-    super::copy::copy(
+    hyper_os::fs::transfer::copy_range(
         payload.file_offset,
         payload.length,
         |offset, bytes| source.read_exact_at(offset, bytes),

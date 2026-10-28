@@ -5,14 +5,10 @@
 
 mod affinity;
 #[cfg(any(test, all(target_os = "hyper", target_arch = "aarch64")))]
-mod copy;
-#[cfg(any(test, all(target_os = "hyper", target_arch = "aarch64")))]
 mod image;
 #[cfg(all(target_os = "hyper", target_arch = "aarch64"))]
 pub mod install;
 pub mod profile;
-#[cfg(any(test, all(target_os = "hyper", target_arch = "aarch64")))]
-mod read_cache;
 mod scheduling;
 
 use affinity::Affinity;
