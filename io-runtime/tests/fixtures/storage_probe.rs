@@ -285,10 +285,29 @@ fn cached_identity_lifetime() -> io::Result<()> {
     Ok(())
 }
 
+fn directory_open_errors() -> io::Result<()> {
+    for (create, truncate) in [(false, false), (true, false), (false, true), (true, true)] {
+        match OpenOptions::new()
+            .read(true)
+            .write(create || truncate)
+            .create(create)
+            .truncate(truncate)
+            .open(DIRECTORY)
+        {
+            Err(error) if error.kind() == io::ErrorKind::IsADirectory => {}
+            Err(error) => return Err(error),
+            Ok(_) => return Err(io::Error::other("opened a directory as a regular file")),
+        }
+    }
+    println!("BOARD-STORAGE: directory open errors PASS");
+    Ok(())
+}
+
 fn run(mode: &str) -> io::Result<()> {
     println!("BOARD-STORAGE: {mode} started");
     if mode == "write" {
         fs::create_dir_all(DIRECTORY)?;
+        directory_open_errors()?;
         for path in [PENDING, PAYLOAD, COPY, COHERENCE] {
             match fs::remove_file(path) {
                 Ok(()) => {}
