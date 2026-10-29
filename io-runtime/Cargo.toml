@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: 2026 roolrz
 # SPDX-License-Identifier: Apache-2.0
 
+bin = [{name = "hyper-io-runtime", path = "src/main.rs", test = false, bench = false}, {name = "hyper-storage-probe", path = "tests/fixtures/storage_probe.rs", required-features = ["storage-probe"], test = false, bench = false}]
+
 [package]
 name = "hyper-io-runtime"
 version = "0.0.0"
@@ -9,21 +11,7 @@ license = "Apache-2.0"
 repository = "https://github.com/HypeR-Proj/bootstrap"
 publish = false
 autotests = false
-
-[[bin]]
-name = "hyper-io-runtime"
-path = "src/main.rs"
-test = false
-bench = false
-
-[[bin]]
-name = "hyper-storage-probe"
-path = "tests/fixtures/storage_probe.rs"
-required-features = [
-    "storage-probe",
-]
-test = false
-bench = false
+workspace = ".."
 
 [features]
 storage-probe = []
@@ -31,29 +19,27 @@ broker-test = []
 userspace-device-test = []
 physical-retirement-probe = []
 
+[dependencies]
+
 [dependencies.serde]
-version = "1"
-features = [
-    "derive",
-]
+workspace = true
+features = ["derive"]
 
 [dependencies.serde_json]
-version = "1"
+workspace = true
 
 [dependencies.hyper-os]
-version = "=0.0.0"
-features = [
-    "std",
-]
+workspace = true
+features = ["std"]
 
 [dependencies.hyper-rt]
-version = "=0.0.0"
-features = [
-    "std",
-]
+workspace = true
+features = ["std"]
 
 [dependencies.hyper-abi]
-version = "=0.0.0"
+workspace = true
+
+[lints]
 
 [lints.clippy]
 doc_markdown = "deny"
@@ -72,6 +58,4 @@ unsafe_op_in_unsafe_fn = "deny"
 
 [lints.rust.unexpected_cfgs]
 level = "warn"
-check-cfg = [
-    "cfg(target_os, values(\"hyper\"))",
-]
+check-cfg = ["cfg(target_os, values(\"hyper\"))"]

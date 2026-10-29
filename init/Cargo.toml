@@ -1,6 +1,8 @@
 # SPDX-FileCopyrightText: 2026 roolrz
 # SPDX-License-Identifier: Apache-2.0
 
+bin = [{name = "hyper-bootstrap-stage1-init", path = "src/main.rs", test = false, bench = false}, {name = "hyper-native-test-init", path = "../../../tests/app/native-init.rs", doc = false, test = false, bench = false}, {name = "hyper-profile-storage-probe", path = "../../../tests/app/profile-storage.rs", doc = false, test = false, bench = false}]
+
 [package]
 name = "hyper-bootstrap-stage1-init"
 version = "0.0.0"
@@ -9,44 +11,25 @@ license = "Apache-2.0"
 repository = "https://github.com/HypeR-Proj/bootstrap"
 publish = false
 autotests = false
+workspace = ".."
 
-[[bin]]
-name = "hyper-bootstrap-stage1-init"
-path = "src/main.rs"
-test = false
-bench = false
-
-[[bin]]
-name = "hyper-native-test-init"
-path = "../../../tests/app/native-init.rs"
-doc = false
-test = false
-bench = false
-
-[[bin]]
-name = "hyper-profile-storage-probe"
-path = "../../../tests/app/profile-storage.rs"
-doc = false
-test = false
-bench = false
+[dependencies]
 
 [dependencies.hyper-rt]
-version = "=0.0.0"
-features = [
-    "std",
-]
+workspace = true
+features = ["std"]
 
 [dependencies.hyper-os]
-version = "=0.0.0"
+workspace = true
 
 [dependencies.serde]
-version = "1"
-features = [
-    "derive",
-]
+workspace = true
+features = ["derive"]
 
 [dependencies.serde_json]
-version = "1"
+workspace = true
+
+[lints]
 
 [lints.clippy]
 doc_markdown = "deny"
@@ -65,6 +48,4 @@ unsafe_op_in_unsafe_fn = "deny"
 
 [lints.rust.unexpected_cfgs]
 level = "warn"
-check-cfg = [
-    "cfg(target_os, values(\"hyper\"))",
-]
+check-cfg = ["cfg(target_os, values(\"hyper\"))"]
