@@ -2,13 +2,12 @@
 # SPDX-License-Identifier: Apache-2.0
 
 [package]
-workspace = ".."
 name = "hyper-bootstrap-stage1-init"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-repository.workspace = true
-publish.workspace = true
+version = "0.0.0"
+edition = "2024"
+license = "Apache-2.0"
+repository = "https://github.com/HypeR-Proj/bootstrap"
+publish = false
 autotests = false
 
 [[bin]]
@@ -17,16 +16,6 @@ path = "src/main.rs"
 test = false
 bench = false
 
-[dependencies]
-hyper-rt.workspace = true
-hyper-os.workspace = true
-serde.workspace = true
-serde_json.workspace = true
-
-[lints]
-workspace = true
-
-# Standalone no-device acceptance fixture; never selected by component.mk.
 [[bin]]
 name = "hyper-native-test-init"
 path = "../../../tests/app/native-init.rs"
@@ -34,10 +23,48 @@ doc = false
 test = false
 bench = false
 
-# Opaque storage-provider migration probe, built only by test-boot-profiles.
 [[bin]]
 name = "hyper-profile-storage-probe"
 path = "../../../tests/app/profile-storage.rs"
 doc = false
 test = false
 bench = false
+
+[dependencies.hyper-rt]
+version = "=0.0.0"
+features = [
+    "std",
+]
+
+[dependencies.hyper-os]
+version = "=0.0.0"
+
+[dependencies.serde]
+version = "1"
+features = [
+    "derive",
+]
+
+[dependencies.serde_json]
+version = "1"
+
+[lints.clippy]
+doc_markdown = "deny"
+empty_docs = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+undocumented_unsafe_blocks = "deny"
+unimplemented = "deny"
+unreachable = "deny"
+unwrap_used = "deny"
+missing_safety_doc = "deny"
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+
+[lints.rust.unexpected_cfgs]
+level = "warn"
+check-cfg = [
+    "cfg(target_os, values(\"hyper\"))",
+]

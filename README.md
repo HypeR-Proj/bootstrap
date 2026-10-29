@@ -5,11 +5,11 @@
 
 Build and deployment options are declared in this directory's [Kconfig](Kconfig).
 Use the repository's `make menuconfig` and `.config` to select programs; see
-[product configuration](../../docs/usage/deployment/configuration.md) for dependencies and defconfig workflows.
+[product configuration](https://github.com/HypeR-Proj/HypeR/blob/main/docs/usage/deployment/configuration.md) for dependencies and defconfig workflows.
 
 This directory owns programs needed in the RAM filesystem to bring up storage,
 mount the system volume and provide a basic recovery shell. Ordinary tools and
-the system init live in [`svc/`](../../svc/README.md); reusable service
+the system init live in [`svc/`](https://github.com/HypeR-Proj/build/blob/main/svc/README.md); reusable service
 implementations and the formal executable loader remain in `lib/`.
 
 | Component | Responsibility |
@@ -46,7 +46,7 @@ The handoff is independent of that choice: stage-1 establishes the independent
 root, while formal policy admits the selected provider's successor before
 ownership moves. Stage-1 does not interpret I/O VM migration payloads or select
 formal executables on the provider's behalf. See
-[boot profiles](../../docs/usage/deployment/boot-policy.md#boot-profiles) for the schema and build
+[boot profiles](https://github.com/HypeR-Proj/HypeR/blob/main/docs/usage/deployment/boot-policy.md#boot-profiles) for the schema and build
 validation boundary.
 
 Rust components own their `Cargo.toml` and `component.mk`. They belong to the
@@ -64,7 +64,7 @@ policy or guest virtio frontend state machines.
 For a targeted bootstrap test, set `APP_TEST_WORKSPACE=bootstrap/stage1` and
 `APP_TEST_PACKAGE`, for example `hyper-fs-fat`.
 
-Only [the Native substrate](../../stdlib/README.md), Rust std, and third-party
+Only [the Native substrate](https://github.com/HypeR-Proj/build/blob/main/stdlib/README.md), Rust std, and third-party
 Cargo dependencies are shared with the formal system. Services communicate via
 explicit capability and wire contracts. During takeover, replacement processes
 run alongside their predecessors until system init completes the ownership
@@ -89,13 +89,13 @@ Stage-1 mounts the independent system volume, switches it to `/` while retaining
 the archive at `/boot`, and only then starts formal init. Provider adoption and
 retirement let formal init stop predecessor processes and detach that archive.
 Ordinary applications and shared libraries live on the independent system root.
-See [boot layout](../../docs/architecture/boot-layout.md) for deployment policy, fstab and the
+See [boot layout](https://github.com/HypeR-Proj/HypeR/blob/main/docs/architecture/boot-layout.md) for deployment policy, fstab and the
 transfer of supervision.
 
 The init supervisor implementation is local to `init/`. FAT and EROFS engines
 are local to their respective worker programs. These single-consumer modules do
 not form independently linked bootstrap library packages. The
-[handoff contract](../../docs/design/boot/bootstrap-handoff.md) separates supervision
+[handoff contract](https://github.com/HypeR-Proj/HypeR/blob/main/docs/design/boot/bootstrap-handoff.md) separates supervision
 adoption from retirement, which is decided and executed by system init.
 
 Bootstrap service diagnostics use a boot timestamp, phase and service header,
@@ -108,4 +108,15 @@ It prepares `system-startup` to validate the domain inventory before accepting
 ownership. Stage1's candidate group includes both processes, so rejection stops
 both before rolling back. Component routes, journal policy and the finite formal
 startup sequence are not interpreted by stage1. See
-[component management](../../docs/design/services/components.md).
+[component management](https://github.com/HypeR-Proj/HypeR/blob/main/docs/design/services/components.md).
+
+## Workspace tests
+
+Use the [HypeR workspace](https://github.com/HypeR-Proj/HypeR) to resolve dependencies:
+
+```sh
+./HypeR/hyper test bootstrap
+```
+
+Build paths in detailed documentation refer to the generated `out/system` directory.
+Edit this repository and prepare the workspace again before building.
