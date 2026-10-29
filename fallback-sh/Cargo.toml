@@ -1,9 +1,7 @@
 # SPDX-FileCopyrightText: 2026 roolrz
 # SPDX-License-Identifier: Apache-2.0
 
-bin = [
-    { name = "hyper-fallback-sh", path = "src/main.rs", test = false, bench = false },
-]
+bin = [{name = "hyper-fallback-sh", path = "src/main.rs", test = false, bench = false}]
 
 [package]
 name = "hyper-fallback-sh"
@@ -13,18 +11,19 @@ license = "Apache-2.0"
 repository = "https://github.com/HypeR-Proj/bootstrap"
 publish = false
 autotests = false
+workspace = ".."
 
 [dependencies]
 shlex = "=1.3.0"
 
 [dependencies.hyper-os]
-version = "=0.0.0"
+workspace = true
 
 [dependencies.hyper-rt]
-version = "=0.0.0"
-features = [
-    "std",
-]
+workspace = true
+features = ["std"]
+
+[lints]
 
 [lints.clippy]
 doc_markdown = "deny"
@@ -43,6 +42,4 @@ unsafe_op_in_unsafe_fn = "deny"
 
 [lints.rust.unexpected_cfgs]
 level = "warn"
-check-cfg = [
-    "cfg(target_os, values(\"hyper\"))",
-]
+check-cfg = ["cfg(target_os, values(\"hyper\"))"]

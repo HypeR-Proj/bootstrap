@@ -46,7 +46,7 @@ starting replacement providers or formal services.
 Before that commit, failures restore the original namespace and stage-1 starts
 `svc/fallback-sh`. After commit, system init owns failures, service replacement
 and retirement. Stage-1 does not choose its own exit time. See the complete
-[handoff contract](https://github.com/HypeR-Proj/HypeR/blob/main/docs/design/boot/bootstrap-handoff.md).
+[handoff contract](https://hyper-proj.github.io/lib-bootstrap-handoff/docs/handoff.html).
 
 Bootstrap components use the static-only userspace loader. Formal components
 use the dynamic loader, including static executables. Their library and worker
@@ -64,13 +64,13 @@ Profiles can select `io.kind: "service"` for a different storage provider, or
 unless selected. A provider participating in handoff names a formal successor;
 formal startup policy must admit it and satisfy the capabilities its services
 require. The generic coordinator forwards the storage migration channel without
-parsing an I/O VM description. See [boot profiles](https://github.com/HypeR-Proj/HypeR/blob/main/docs/usage/deployment/boot-policy.md#boot-profiles).
+parsing an I/O VM description. See [boot profiles](../../docs/boot-policy.md#boot-profiles).
 
 The formal graph starts `session-manager`, which creates `terminal-service` and
 `bin/sh`. `/etc/hyper/session.json` optionally selects relative terminal/shell
 paths and a rapid-failure restart limit. The fallback shell handles only failures
 before handoff; formal failures never restart it. See
-[Native terminals](https://github.com/HypeR-Proj/HypeR/blob/main/docs/design/services/terminal.md).
+[Native terminals](https://hyper-proj.github.io/terminal-service/docs/terminal.html).
 
 The default `vm-manager` is noncritical and independent of I/O VM launch. Omitting
 business VMs does not change bootstrap storage or the handoff protocol. Formal
