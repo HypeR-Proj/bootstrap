@@ -49,7 +49,7 @@ formal executables on the provider's behalf. See
 [boot profiles](docs/boot-policy.md#boot-profiles) for the schema and build
 validation boundary.
 
-Rust components own their `Cargo.toml` and `component.mk`. They belong to the
+Rust components own their `Cargo.toml`; repository-owned `component.json` declares their workspace and delivered artifacts. They belong to the
 independent [`Cargo.toml`](Cargo.toml) workspace here, with its own lockfile.
 There is no `stage1/lib` tree or private bootstrap library package graph.
 Supervisor and format engines live in their owning executable packages.

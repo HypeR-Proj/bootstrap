@@ -64,5 +64,258 @@
       "APP_TEST_WORKSPACE=bootstrap/stage1",
       "APP_TEST_PACKAGE=hyper-umount"
     ]
-  ]
+  ],
+  "cargo": [
+    {
+      "manifest": "console-raw/Cargo.toml",
+      "domain": "boot"
+    },
+    {
+      "manifest": "fallback-sh/Cargo.toml",
+      "domain": "boot"
+    },
+    {
+      "manifest": "fs-backend/Cargo.toml",
+      "domain": "boot"
+    },
+    {
+      "manifest": "fs-erofs/Cargo.toml",
+      "domain": "boot"
+    },
+    {
+      "manifest": "fs-fat/Cargo.toml",
+      "domain": "boot"
+    },
+    {
+      "manifest": "init/Cargo.toml",
+      "domain": "boot"
+    },
+    {
+      "manifest": "io-runtime/Cargo.toml",
+      "domain": "boot"
+    },
+    {
+      "manifest": "mount/Cargo.toml",
+      "domain": "boot"
+    },
+    {
+      "manifest": "umount/Cargo.toml",
+      "domain": "boot"
+    }
+  ],
+  "artifacts": [
+    {
+      "binary": "hyper-console-raw",
+      "staged": "console-raw",
+      "destination": "svc/console-raw",
+      "mode": "0755",
+      "profiles": [
+        "development"
+      ],
+      "rust_runtime": "std",
+      "environment": "boot",
+      "manifest": "console-raw/Cargo.toml",
+      "enabled": true,
+      "requires": [
+        {
+          "module": "bootstrap",
+          "artifact": "init"
+        }
+      ]
+    },
+    {
+      "binary": "hyper-fallback-sh",
+      "staged": "fallback-sh",
+      "destination": "svc/fallback-sh",
+      "mode": "0755",
+      "profiles": [
+        "development"
+      ],
+      "rust_runtime": "std",
+      "environment": "boot",
+      "manifest": "fallback-sh/Cargo.toml",
+      "enabled": true,
+      "requires": [
+        {
+          "module": "bootstrap",
+          "artifact": "console-raw"
+        }
+      ]
+    },
+    {
+      "binary": "hyper-fs-backend",
+      "staged": "fs-backend",
+      "destination": "svc/fs-backend",
+      "mode": "0755",
+      "profiles": [
+        "development"
+      ],
+      "rust_runtime": "std",
+      "environment": "boot",
+      "manifest": "fs-backend/Cargo.toml",
+      "enabled": true,
+      "requires": [
+        {
+          "module": "bootstrap",
+          "artifact": "console-raw"
+        }
+      ]
+    },
+    {
+      "binary": "hyper-fs-erofs",
+      "staged": "fs-erofs",
+      "destination": "svc/fs-erofs",
+      "mode": "0755",
+      "profiles": [
+        "development"
+      ],
+      "rust_runtime": "std",
+      "environment": "boot",
+      "manifest": "fs-erofs/Cargo.toml",
+      "enabled": true,
+      "requires": [
+        {
+          "module": "bootstrap",
+          "artifact": "fs-backend"
+        }
+      ]
+    },
+    {
+      "binary": "hyper-fs-fat",
+      "staged": "fs-fat",
+      "destination": "svc/fs-fat",
+      "mode": "0755",
+      "profiles": [
+        "development"
+      ],
+      "rust_runtime": "std",
+      "environment": "boot",
+      "manifest": "fs-fat/Cargo.toml",
+      "enabled": true,
+      "requires": [
+        {
+          "module": "bootstrap",
+          "artifact": "fs-backend"
+        }
+      ]
+    },
+    {
+      "binary": "hyper-bootstrap-stage1-init",
+      "staged": "init",
+      "destination": "init",
+      "mode": "0755",
+      "profiles": [
+        "development"
+      ],
+      "rust_runtime": "std",
+      "environment": "boot",
+      "manifest": "init/Cargo.toml",
+      "enabled": true
+    },
+    {
+      "binary": "hyper-io-runtime",
+      "staged": "io-runtime",
+      "destination": "svc/io-runtime",
+      "mode": "0755",
+      "profiles": [
+        "development",
+        "io"
+      ],
+      "rust_runtime": "std",
+      "environment": "boot",
+      "manifest": "io-runtime/Cargo.toml",
+      "enabled": true,
+      "requires": [
+        {
+          "module": "bootstrap",
+          "artifact": "console-raw"
+        }
+      ]
+    },
+    {
+      "binary": "hyper-mount",
+      "staged": "mount",
+      "destination": "bin/mount",
+      "mode": "0755",
+      "profiles": [
+        "development"
+      ],
+      "rust_runtime": "std",
+      "environment": "boot",
+      "manifest": "mount/Cargo.toml",
+      "enabled": true,
+      "requires": [
+        {
+          "module": "bootstrap",
+          "artifact": "fs-backend"
+        }
+      ]
+    },
+    {
+      "binary": "hyper-umount",
+      "staged": "umount",
+      "destination": "bin/umount",
+      "mode": "0755",
+      "profiles": [
+        "development"
+      ],
+      "rust_runtime": "std",
+      "environment": "boot",
+      "manifest": "umount/Cargo.toml",
+      "enabled": true,
+      "requires": [
+        {
+          "module": "bootstrap",
+          "artifact": "fs-backend"
+        }
+      ]
+    },
+    {
+      "source": "{sdk}/lib64/userspace-loader-hyper-{arch}",
+      "destination": "lib64/userspace-loader-hyper-{arch}",
+      "mode": "0755",
+      "profiles": [
+        "system",
+        "development"
+      ],
+      "environment": "boot"
+    }
+  ],
+  "build": {
+    "requires": [
+      "toolchain"
+    ],
+    "actions": {
+      "all": [
+        [
+          "python3",
+          "{workspace}/scripts/build-native-module.py",
+          "--module",
+          "{module}",
+          "--action",
+          "{action}"
+        ]
+      ],
+      "build": [
+        [
+          "python3",
+          "{workspace}/scripts/build-native-module.py",
+          "--module",
+          "{module}",
+          "--action",
+          "{action}"
+        ]
+      ],
+      "check": [
+        [
+          "python3",
+          "{workspace}/scripts/build-native-module.py",
+          "--module",
+          "{module}",
+          "--action",
+          "{action}"
+        ]
+      ]
+    }
+  }
 }
