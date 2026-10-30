@@ -69,7 +69,7 @@ impl Description {
             if let Some(mount) = &volume.mounted
                 && (!crate::config::absolute_path(&mount.target)
                     || mount.mount_id == 0
-                    || !matches!(mount.format.as_str(), "fat" | "erofs")
+                    || !matches!(mount.format.as_str(), "fat" | "erofs" | "f2fs")
                     || (volume.read_only || mount.format == "erofs") && !mount.read_only
                     || value.volumes[..index].iter().any(|old| {
                         old.mounted.as_ref().is_some_and(|old| {

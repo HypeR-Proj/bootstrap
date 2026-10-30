@@ -15,7 +15,7 @@ fn run() -> Result<(), String> {
         match argument.as_str() {
             "-h" | "--help" => {
                 println!(
-                    "usage: mount [-T FSTAB] -a\n       mount [-T FSTAB] SOURCE_OR_TARGET\n       mount [-t auto|fat|erofs] [-o ro|rw] SOURCE TARGET\nWithout arguments, list mounted Native volumes. The default bootstrap table is /etc/fstab.\nUse -T PATH to select another table during recovery."
+                    "usage: mount [-T FSTAB] -a\n       mount [-T FSTAB] SOURCE_OR_TARGET\n       mount [-t auto|fat|erofs|f2fs] [-o ro|rw] SOURCE TARGET\nWithout arguments, list mounted Native volumes. The default bootstrap table is /etc/fstab.\nUse -T PATH to select another table during recovery."
                 );
                 return Ok(());
             }
