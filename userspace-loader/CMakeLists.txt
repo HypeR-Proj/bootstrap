@@ -42,7 +42,7 @@ target_link_options(hyper_userspace_loader PRIVATE
     -Wl,-Bsymbolic,-z,text,--entry=_start
     -Wl,--build-id=none,--gc-sections,-z,noexecstack,-z,max-page-size=4096
     -Wl,-T,${CMAKE_CURRENT_SOURCE_DIR}/userspace-loader.ld
-    ${HYPER_SYSROOT}/lib/libhyper.a
+    ${HYPER_SYSROOT}/lib/libsystem.a
 )
 set_target_properties(hyper_userspace_loader PROPERTIES
     OUTPUT_NAME userspace-loader-hyper-${HYPER_ARCH}

@@ -87,7 +87,7 @@ fn try_transfer(
     builder.add_handle_duplicate(
         a.root_directory.as_handle_ref(),
         startup::ROOT_DIRECTORY.as_raw(),
-        // libhyper retains a root by duplicating it, and std file opens request
+        // libsystem retains a root by duplicating it, and std file opens request
         // INSPECT on the derived file. Preparation needs no filesystem writes.
         RightsOffer::Exact(
             Rights::READ
