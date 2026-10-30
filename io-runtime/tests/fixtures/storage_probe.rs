@@ -303,11 +303,41 @@ fn directory_open_errors() -> io::Result<()> {
     Ok(())
 }
 
+// This runs through the FAT worker and std on a real remote volume. Traversal
+// must release its own directory leases before remove-if, including paged and
+// nested directories, without deleting a sibling or reusing stale identities.
+fn remote_recursive_removal() -> io::Result<()> {
+    let tree = format!("{DIRECTORY}/remove-tree");
+    let sibling = format!("{DIRECTORY}/remove-sibling.bin");
+    fs::write(&sibling, b"keep sibling")?;
+    for index in 0..7 {
+        let child = format!("{tree}/child-{index}/nested");
+        fs::create_dir_all(&child)?;
+        fs::write(format!("{child}/payload"), b"remove payload")?;
+    }
+    fs::remove_dir_all(format!("{tree}/"))?;
+    match fs::metadata(&tree) {
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+        Err(error) => return Err(error),
+        Ok(_) => return Err(io::Error::other("recursive removal left its root")),
+    }
+    if fs::read(&sibling)? != b"keep sibling" {
+        return Err(io::Error::other("recursive removal changed a sibling"));
+    }
+    fs::create_dir_all(format!("{tree}/recreated/child"))?;
+    fs::write(format!("{tree}/recreated/child/new"), b"new identity")?;
+    fs::remove_dir_all(&tree)?;
+    fs::remove_file(&sibling)?;
+    println!("BOARD-STORAGE: remote recursive removal PASS");
+    Ok(())
+}
+
 fn run(mode: &str) -> io::Result<()> {
     println!("BOARD-STORAGE: {mode} started");
     if mode == "write" {
         fs::create_dir_all(DIRECTORY)?;
         directory_open_errors()?;
+        remote_recursive_removal()?;
         for path in [PENDING, PAYLOAD, COPY, COHERENCE] {
             match fs::remove_file(path) {
                 Ok(()) => {}
