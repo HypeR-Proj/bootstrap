@@ -3,13 +3,14 @@
 
 # Stage-1 bootstrap and recovery
 
-Build and deployment options are declared in this directory's [Kconfig](Kconfig).
-Use the repository's `make menuconfig` and `.config` to select programs; see
+Workspace membership and delivered programs are declared in [component.json](component.json).
+Run `make menuconfig` at the workspace root and select the product menu; its
+selection is saved under `OUT/config/ARCH/.config`. See
 [product configuration](https://hyper-proj.github.io/manifest/docs/configuration.html) for dependencies and defconfig workflows.
 
 This directory owns programs needed in the RAM filesystem to bring up storage,
 mount the system volume and provide a basic recovery shell. Ordinary tools and
-the system init live in [`svc/`](https://github.com/HypeR-Proj/build/blob/main/svc/README.md); reusable service
+the system init have [separate module repositories](https://hyper-proj.github.io/manifest/modules.html); reusable service
 implementations and the formal executable loader remain in `lib/`.
 
 | Component | Responsibility |
@@ -49,7 +50,7 @@ formal executables on the provider's behalf. See
 [boot profiles](docs/boot-policy.md#boot-profiles) for the schema and build
 validation boundary.
 
-Rust components own their `Cargo.toml` and `component.mk`. They belong to the
+Rust components own their `Cargo.toml`; repository-owned `component.json` declares their workspace and delivered artifacts. They belong to the
 independent [`Cargo.toml`](Cargo.toml) workspace here, with its own lockfile.
 There is no `stage1/lib` tree or private bootstrap library package graph.
 Supervisor and format engines live in their owning executable packages.
@@ -64,7 +65,7 @@ policy or guest virtio frontend state machines.
 For a targeted bootstrap test, set `APP_TEST_WORKSPACE=bootstrap/stage1` and
 `APP_TEST_PACKAGE`, for example `hyper-fs-fat`.
 
-Only [the Native substrate](https://github.com/HypeR-Proj/build/blob/main/stdlib/README.md), Rust std, and third-party
+Only [the Native Rust substrate](https://hyper-proj.github.io/lib-rust/), Rust std, and third-party
 Cargo dependencies are shared with the formal system. Services communicate via
 explicit capability and wire contracts. During takeover, replacement processes
 run alongside their predecessors until system init completes the ownership
