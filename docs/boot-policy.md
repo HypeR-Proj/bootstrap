@@ -203,7 +203,7 @@ Normal board images require a generated independent system partition. Each Nativ
 partition consumes one of eight I/O data clients shared with guests. Client zero
 is the owner-only physical block control channel. Labels are not reserved; change
 their selectors with them, or use PARTUUID to distinguish equal labels. See
-[board storage](https://hyper-proj.github.io/build/docs/deployment/board-storage.html) for image inputs and partition schema.
+[board storage](https://hyper-proj.github.io/HypeR/docs/usage/board-storage.html) for image inputs and partition schema.
 
 Functional checks in `tests/qemu/verify-boot-system.py` exercise root switching,
 provider takeover, retirement and recovery. Parser and EROFS fixture checks run

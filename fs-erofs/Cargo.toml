@@ -5,7 +5,7 @@ bin = [{name = "hyper-fs-erofs", path = "src/main.rs", test = false, bench = fal
 
 [package]
 name = "hyper-fs-erofs"
-version = "0.0.0"
+version.workspace = true
 edition = "2024"
 license = "Apache-2.0"
 repository = "https://github.com/HypeR-Proj/bootstrap"

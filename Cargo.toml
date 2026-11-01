@@ -10,10 +10,10 @@ members = [
 exclude = [".cargo", "target", "userspace-loader"]
 
 [workspace.package]
-version = "0.0.0"
+version = "0.1.0"
 edition = "2024"
 license = "Apache-2.0"
-repository = "https://github.com/roolrz/HypeR"
+repository = "https://github.com/HypeR-Proj/bootstrap"
 publish = false
 
 [workspace.dependencies]
