@@ -5,7 +5,7 @@ bin = [{name = "hyper-fs-fat", path = "src/main.rs", test = false, bench = false
 
 [package]
 name = "hyper-fs-fat"
-version = "0.0.0"
+version.workspace = true
 edition = "2024"
 license = "Apache-2.0"
 repository = "https://github.com/HypeR-Proj/bootstrap"
@@ -29,7 +29,6 @@ workspace = true
 [dependencies.fatfs]
 default-features = false
 features = ["lfn", "unicode"]
-version = "=0.4.0"
 path = "../../../third_party/rust-fatfs"
 
 [lints]

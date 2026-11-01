@@ -21,8 +21,18 @@ name = "hyper-abi"
 version = "0.0.0"
 
 [[package]]
+name = "hyper-bootstrap-stage1-init"
+version = "0.1.0"
+dependencies = [
+ "hyper-os",
+ "hyper-rt",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "hyper-console-raw"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "hyper-os",
  "hyper-rt",
@@ -30,7 +40,7 @@ dependencies = [
 
 [[package]]
 name = "hyper-fallback-sh"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "hyper-os",
  "hyper-rt",
@@ -43,7 +53,7 @@ version = "0.0.0"
 
 [[package]]
 name = "hyper-fs-backend"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "hyper-filesystem",
  "hyper-os",
@@ -54,7 +64,7 @@ dependencies = [
 
 [[package]]
 name = "hyper-fs-erofs"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "hyper-filesystem",
  "hyper-os",
@@ -63,7 +73,7 @@ dependencies = [
 
 [[package]]
 name = "hyper-fs-fat"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "fatfs",
  "hyper-filesystem",
@@ -72,18 +82,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "hyper-bootstrap-stage1-init"
-version = "0.0.0"
-dependencies = [
- "hyper-os",
- "hyper-rt",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "hyper-io-runtime"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "hyper-abi",
  "hyper-os",
@@ -94,7 +94,7 @@ dependencies = [
 
 [[package]]
 name = "hyper-mount"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "hyper-os",
  "hyper-rt",
@@ -126,7 +126,7 @@ dependencies = [
 
 [[package]]
 name = "hyper-umount"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "hyper-os",
  "hyper-rt",

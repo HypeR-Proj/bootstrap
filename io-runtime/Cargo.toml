@@ -5,7 +5,7 @@ bin = [{name = "hyper-io-runtime", path = "src/main.rs", test = false, bench = f
 
 [package]
 name = "hyper-io-runtime"
-version = "0.0.0"
+version.workspace = true
 edition = "2024"
 license = "Apache-2.0"
 repository = "https://github.com/HypeR-Proj/bootstrap"
