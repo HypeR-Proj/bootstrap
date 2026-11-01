@@ -315,7 +315,9 @@ fn remote_recursive_removal() -> io::Result<()> {
         fs::create_dir_all(&child)?;
         fs::write(format!("{child}/payload"), b"remove payload")?;
     }
-    fs::remove_dir_all(format!("{tree}/"))?;
+    fs::remove_dir_all(format!("{tree}/")).map_err(|error| {
+        io::Error::new(error.kind(), format!("first recursive removal: {error}"))
+    })?;
     match fs::metadata(&tree) {
         Err(error) if error.kind() == io::ErrorKind::NotFound => {}
         Err(error) => return Err(error),
@@ -326,8 +328,13 @@ fn remote_recursive_removal() -> io::Result<()> {
     }
     fs::create_dir_all(format!("{tree}/recreated/child"))?;
     fs::write(format!("{tree}/recreated/child/new"), b"new identity")?;
-    fs::remove_dir_all(&tree)?;
-    fs::remove_file(&sibling)?;
+    fs::remove_dir_all(&tree).map_err(|error| {
+        io::Error::new(
+            error.kind(),
+            format!("recreated recursive removal: {error}"),
+        )
+    })?;
+    remove_closed_file(&sibling)?;
     println!("BOARD-STORAGE: remote recursive removal PASS");
     Ok(())
 }
