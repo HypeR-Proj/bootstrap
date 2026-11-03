@@ -137,3 +137,10 @@ matched transfer rejections while preserving their shared listeners. Local recei
 failures retain a terminal diagnostic path. Console stream parsing distinguishes
 peer protocol refusal from a trusted SDK failure. These policies are implemented
 inside bootstrap without importing formal service libraries.
+
+The bootstrap mount-control listener admits at most eight concurrent private
+first-command handshakes, each expiring five seconds after public admission.
+An eight-entry completed-command queue feeds the existing mount-state owner.
+Overload closes the private connection after a best-effort error; timeout and
+peer closure reclaim its worker. Listener shutdown cancels and joins workers.
+The bootstrap implementation remains independent of formal service libraries.
