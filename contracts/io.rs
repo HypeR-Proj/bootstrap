@@ -6,14 +6,11 @@
 use crate::contracts::StartupContract;
 use hyper_os::{handle::Rights, startup};
 
-mod connection;
+mod identity;
 
-// Each bootstrap owner consumes only its side of these wire contracts.
+// Each bootstrap owner consumes only its side of these startup contracts.
 #[allow(unused_imports)]
-pub use connection::{
-    CONNECT_BYTES, Connection, DISK, NETWORK, decode_connect, encode_connect, parse_mac,
-    valid_name, valid_volume,
-};
+pub use identity::{DISK, NETWORK, parse_mac, valid_name, valid_volume};
 
 pub const DEVICE_AUTHORITY_NAME: &str = "io.device-authority";
 pub const STARTUP_CONTRACTS: &[StartupContract] = &[
@@ -87,5 +84,5 @@ pub fn send_capabilities(
 }
 
 #[cfg(test)]
-#[path = "tests/io_connection.rs"]
-mod connection_tests;
+#[path = "tests/io_identity.rs"]
+mod identity_tests;

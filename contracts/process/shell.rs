@@ -14,8 +14,8 @@ use hyper_os::task::ProcessBuilder;
 /// The caller first selects the trusted shell image, then delegates its usual
 /// root, task construction and stdio capabilities independently. Ordinary
 /// commands must not receive this inventory. The loader and library directory
-/// describe the caller's retained image environment. Bootstrap recovery and
-/// formal shells retain separate loader and library capabilities.
+/// describe the retained bootstrap image environment. Formal shell and fleet
+/// delegation policy belongs to the formal services.
 pub struct ShellDelegation<'a> {
     pub environment: HandleRef<'a, DirectoryObject>,
     pub loader: HandleRef<'a, FileObject>,
@@ -25,7 +25,6 @@ pub struct ShellDelegation<'a> {
     pub memory: HandleRef<'a, MemoryInspectorObject>,
     pub cpus: HandleRef<'a, CpuInspectorObject>,
     pub filesystem: Option<HandleRef<'a, CapabilityChannelObject>>,
-    pub virtual_machines: Option<HandleRef<'a, CapabilityChannelObject>>,
 }
 
 impl ShellDelegation<'_> {
@@ -50,12 +49,6 @@ impl ShellDelegation<'_> {
             grant!(
                 handle,
                 crate::contracts::filesystem::DELEGATED_CONTROL_CLIENT_CONTRACT
-            );
-        }
-        if let Some(handle) = self.virtual_machines {
-            grant!(
-                handle,
-                crate::contracts::vm::DELEGATED_CLIENT_CONNECTION_CONTRACT
             );
         }
         Ok(())

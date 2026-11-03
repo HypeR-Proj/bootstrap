@@ -12,7 +12,6 @@ pub mod filesystem;
 pub mod io;
 pub mod process;
 pub mod stdio;
-pub mod vm;
 
 use hyper_os::handle::{Rights, TypedObject};
 use hyper_os::startup::StartupPurpose;

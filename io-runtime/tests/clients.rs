@@ -36,11 +36,7 @@ fn exact_board_identity_controls_authorization() {
         crate::contracts::io::DISK | crate::contracts::io::NETWORK,
     ]) {
         assert_eq!(client.devices(), devices);
-        let wire = client.connection().encode().unwrap();
-        assert_eq!(
-            crate::contracts::io::decode_connect(&wire),
-            Some(client.connection())
-        );
+        assert!(client.is_valid());
     }
     for invalid in [
         "hyper.clients.v1\n0 config\n1 alpine\n",
@@ -66,34 +62,88 @@ fn exact_board_identity_controls_authorization() {
 }
 
 #[test]
-fn native_network_identity_is_reserved_without_a_live_endpoint() {
-    assert!(parse("hyper.clients.v3\n0 - - -\n").unwrap().is_empty());
-    assert!(
-        crate::contracts::io::Connection {
-            client: 0,
-            volume: None,
-            network: Some("default"),
-            mac: [2, 0x48, 0x59, 0, 0, 0],
-        }
-        .encode()
-        .is_none()
-    );
+fn native_network_identity_is_reserved_without_a_live_endpoint() -> Result<(), &'static str> {
+    assert!(parse("hyper.clients.v3\n0 - - -\n")?.is_empty());
+    let native = Client {
+        id: 0,
+        volume: None,
+        network: Some("default".into()),
+        mac: [2, 0x48, 0x59, 0, 0, 0],
+    };
+    assert!(!native.is_valid());
+    Ok(())
 }
 
 #[test]
-fn capability_records_are_canonical_and_checked() {
-    let mut request = crate::contracts::io::encode_connect(7, "vm-seven").unwrap();
-    assert_eq!(
-        crate::contracts::io::decode_connect(&request),
-        Some(crate::contracts::io::Connection {
-            client: 7,
-            volume: Some("vm-seven"),
-            network: None,
-            mac: [0; 6],
-        })
+fn transferred_client_policy_retains_identity_and_device_constraints() {
+    let valid = Client {
+        id: 127,
+        volume: Some("vm-seven".into()),
+        network: None,
+        mac: [0; 6],
+    };
+    assert!(valid.is_valid());
+    for id in [0, 128, u32::MAX] {
+        assert!(
+            !Client {
+                id,
+                ..valid.clone()
+            }
+            .is_valid()
+        );
+    }
+    assert!(
+        !Client {
+            volume: None,
+            ..valid.clone()
+        }
+        .is_valid()
     );
-    request[13] = 1;
-    assert!(crate::contracts::io::decode_connect(&request).is_none());
+    assert!(
+        !Client {
+            mac: [2, 0, 0, 0, 0, 1],
+            ..valid.clone()
+        }
+        .is_valid()
+    );
+    for name in ["", "../volume", "a\0b", "abcdefghijklmnopqrstuvwxyz1234567"] {
+        assert!(
+            !Client {
+                volume: Some(name.into()),
+                ..valid.clone()
+            }
+            .is_valid()
+        );
+    }
+    for name in ["", "Default", "../default", "default_net", "a\0b"] {
+        assert!(
+            !Client {
+                network: Some(name.into()),
+                mac: [2, 0, 0, 0, 0, 1],
+                ..valid.clone()
+            }
+            .is_valid()
+        );
+    }
+    for first in [0, 1, 3, 255] {
+        assert!(
+            !Client {
+                network: Some("default".into()),
+                mac: [first, 0, 0, 0, 0, 1],
+                ..valid.clone()
+            }
+            .is_valid()
+        );
+    }
+    assert!(
+        Client {
+            volume: None,
+            network: Some("default".into()),
+            mac: [2, 0, 0, 0, 0, 1],
+            ..valid
+        }
+        .is_valid()
+    );
 }
 
 #[test]

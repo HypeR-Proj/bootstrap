@@ -153,7 +153,7 @@ impl Description {
         for (index, client) in self.clients.iter().enumerate() {
             if client.id == 0
                 || client.id as usize >= hyper_os::vm::IO_MAX_CLIENTS
-                || client.connection().encode().is_none()
+                || !client.is_valid()
                 || self.clients[..index]
                     .iter()
                     .any(|other| client.conflicts_with(other))

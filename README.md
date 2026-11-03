@@ -69,6 +69,18 @@ The filesystem request loop is owned by `fs-backend/src/worker_transport.rs` and
 by the format workers. Bootstrap never links formal-system libraries from the
 repository's top-level `lib/`. Its I/O runtime does not carry formal VM fleet
 policy or guest virtio frontend state machines.
+
+Bootstrap retains board-authored disk/network identity policy for the I/O VM
+and its successor handoff, but does not encode or accept the formal fleet's
+client-admission messages. Configured and transferred identities use the same
+local validation. Recovery delegates filesystem control and process inspection;
+it has no formal VM-manager connector to delegate.
+
+FAT mutation and flush operations remain available to recovery tools. The boot
+profile's read-only system mount does not make every recovery filesystem
+read-only. Bootstrap format implementations remain independently maintained;
+they neither link formal parsers nor require matching formal source revisions.
+
 `make app-check`, `make app-test` and `make app-sdk-test` cover both workspaces.
 For a targeted bootstrap test, set `APP_TEST_WORKSPACE=bootstrap/stage1` and
 `APP_TEST_PACKAGE`, for example `hyper-fs-fat`.
