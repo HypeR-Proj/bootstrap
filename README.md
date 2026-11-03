@@ -160,3 +160,10 @@ The bootstrap implementation remains independent of formal service libraries.
 Bootstrap mount-control replies have a five-second send deadline. The private
 control client also accepts one absolute deadline across command, attachment and
 reply stages. Timeout does not roll back an already applied mount operation.
+
+Recovery filesystem control checks private-client closure before accepting each
+mount or unmount, including after read-only preparation. After acceptance it
+finishes ownership transfer/retirement even if the reply is lost. A table is a
+sequence of mounts: earlier entries remain after a later error or cancellation.
+Inspect the live mount list before retrying. Boot-owned table processing has no
+external cancellation peer. These checks are maintained inside bootstrap.
