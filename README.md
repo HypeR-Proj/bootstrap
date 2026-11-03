@@ -36,6 +36,14 @@ workers declared as profile prerequisites are rejected during packaging;
 filesystem formats selected only by runtime media probing still report a mount
 error when their worker is unavailable.
 
+The bootstrap FAT worker reports the accepted input prefix on a short write,
+including allocation exhaustion after partial progress. Callers retry only the
+remaining suffix; gap zero filling is not input progress and may survive a failed
+write. Accepted bytes are not necessarily durable. Late storage failures retain
+the known count but poison the volume; later operations and sync report failure.
+Every accepted asynchronous request retires before its input window is released.
+An error does not guarantee rollback of an indeterminate transfer.
+
 `/etc/hyper/boot-profiles/default.json` is required. Stage-1 interprets
 `hyper.boot-profile=NAME` from the arguments left by the kernel to select
 another packaged profile. Stage-1 closes the received boot-argument handle after
