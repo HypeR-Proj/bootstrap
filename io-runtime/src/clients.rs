@@ -22,17 +22,36 @@ impl Client {
             || (self.network.is_some() && other.mac == self.mac)
     }
 
-    pub fn connection(&self) -> crate::contracts::io::Connection<'_> {
-        crate::contracts::io::Connection {
-            client: self.id,
-            volume: self.volume.as_deref(),
-            network: self.network.as_deref(),
-            mac: self.mac,
-        }
+    /// Validate configured and transferred policy without constructing a wire
+    /// request that bootstrap never sends or accepts.
+    pub fn is_valid(&self) -> bool {
+        (1..=127).contains(&self.id)
+            && self.devices() != 0
+            && self
+                .volume
+                .as_deref()
+                .is_none_or(crate::contracts::io::valid_volume)
+            && self
+                .network
+                .as_deref()
+                .is_none_or(crate::contracts::io::valid_name)
+            && if self.network.is_some() {
+                self.mac[0] & 3 == 2
+            } else {
+                self.mac == [0; 6]
+            }
     }
 
     pub fn devices(&self) -> u32 {
-        self.connection().devices()
+        (if self.volume.is_some() {
+            crate::contracts::io::DISK
+        } else {
+            0
+        }) | (if self.network.is_some() {
+            crate::contracts::io::NETWORK
+        } else {
+            0
+        })
     }
 }
 
@@ -67,9 +86,7 @@ pub fn parse(bytes: &str) -> Result<Vec<Client>, &'static str> {
                 crate::contracts::io::parse_mac(mac).ok_or("invalid client MAC")?
             },
         };
-        if client.connection().encode().is_none()
-            || clients.iter().any(|other| client.conflicts_with(other))
-        {
+        if !client.is_valid() || clients.iter().any(|other| client.conflicts_with(other)) {
             return Err("invalid or duplicate I/O client");
         }
         clients.push(client);

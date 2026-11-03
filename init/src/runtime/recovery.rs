@@ -180,7 +180,6 @@ impl Runtime {
                     .filesystem_control_client
                     .as_ref()
                     .map(OwnedHandle::as_handle_ref),
-                virtual_machines: None,
             }
             .add_to(&builder)?;
             builder.add_handle_duplicate(

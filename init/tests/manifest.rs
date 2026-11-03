@@ -14,6 +14,7 @@ use super::{
 // This parser test policy also exercises arbitrary formal roles. They are
 // deliberately absent from the production bootstrap capability vocabulary.
 const MOCK_VM_PROVISIONING_PURPOSE: u32 = 0x8005_0004;
+const MOCK_VM_MANAGER_CONNECTION_PURPOSE: u32 = 0x8005_0007;
 
 const VALID: &str = r#"
 {
@@ -443,26 +444,22 @@ impl AuthorityPolicy for Policy {
                 (315, 5, READ | EXECUTE | PROTECT | DUPLICATE | TRANSFER)
             }
             ("/svc/session-manager", "vm.manager-connection") => (
-                crate::contracts::vm::MANAGER_CONNECTION.as_raw(),
+                MOCK_VM_MANAGER_CONNECTION_PURPOSE,
                 22,
                 WAIT | WRITE | DUPLICATE | TRANSFER,
             ),
-            ("/bin/sh", "vm.manager-connection") => (
-                crate::contracts::vm::MANAGER_CONNECTION.as_raw(),
-                22,
-                WAIT | WRITE,
-            ),
+            ("/bin/sh", "vm.manager-connection") => {
+                (MOCK_VM_MANAGER_CONNECTION_PURPOSE, 22, WAIT | WRITE)
+            }
             ("/svc/vm-manager", "vm.runtime-image") => {
                 (312, 21, READ | EXECUTE | PROTECT | DUPLICATE | TRANSFER)
             }
             ("/svc/vm-manager", "vm.provisioning") => {
                 (MOCK_VM_PROVISIONING_PURPOSE, 22, WAIT | READ)
             }
-            ("/svc/vm-manager", "vm.manager-connection") => (
-                crate::contracts::vm::MANAGER_CONNECTION.as_raw(),
-                22,
-                WAIT | READ,
-            ),
+            ("/svc/vm-manager", "vm.manager-connection") => {
+                (MOCK_VM_MANAGER_CONNECTION_PURPOSE, 22, WAIT | READ)
+            }
             ("/svc/vm-manager", "process.task-factory") => {
                 (304, 6, CREATE_PROCESS | CREATE_TASK_GROUP)
             }
