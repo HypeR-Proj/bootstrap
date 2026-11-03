@@ -167,7 +167,13 @@ fn serve_control(
         } else {
             response
         };
-        if let Err(error) = connection.as_byte_channel().send(response.as_bytes()) {
+        let reply_until = hyper_os::time::deadline_after(std::time::Duration::from_secs(5))
+            .map_err(show)?
+            .as_raw();
+        if let Err(error) = connection
+            .as_byte_channel()
+            .send_until(response.as_bytes(), reply_until)
+        {
             eprintln!(
                 "{}response lost: {error:?}",
                 crate::logging::prefix("fs-backend")

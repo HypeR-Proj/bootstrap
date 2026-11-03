@@ -144,3 +144,7 @@ An eight-entry completed-command queue feeds the existing mount-state owner.
 Overload closes the private connection after a best-effort error; timeout and
 peer closure reclaim its worker. Listener shutdown cancels and joins workers.
 The bootstrap implementation remains independent of formal service libraries.
+
+Bootstrap mount-control replies have a five-second send deadline. The private
+control client also accepts one absolute deadline across command, attachment and
+reply stages. Timeout does not roll back an already applied mount operation.
