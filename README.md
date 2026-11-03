@@ -129,3 +129,11 @@ python3 project.py test bootstrap
 
 Paths in the documentation are relative to the repo-managed workspace root.
 Edit this repository and prepare the workspace again before building.
+
+## Public listener recovery
+
+Bootstrap filesystem control and console admission discard malformed requests and
+matched transfer rejections while preserving their shared listeners. Local receive
+failures retain a terminal diagnostic path. Console stream parsing distinguishes
+peer protocol refusal from a trusted SDK failure. These policies are implemented
+inside bootstrap without importing formal service libraries.
