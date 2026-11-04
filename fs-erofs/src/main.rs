@@ -64,6 +64,9 @@ impl ReadDevice for Device {
 struct Erofs(hyper_fs_erofs::Volume<Device>);
 
 impl Volume for Erofs {
+    fn read_only(&self) -> bool {
+        true
+    }
     fn stat(&mut self, path: &str) -> Result<Entry, Error> {
         metadata(self.0.stat(path).map_err(map_error)?)
     }

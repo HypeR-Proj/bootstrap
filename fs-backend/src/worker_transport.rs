@@ -14,6 +14,11 @@ use hyper_os::{
 };
 
 pub trait Volume {
+    /// Bootstrap supports synchronous persistent filesystems and read-only providers.
+    fn read_only(&self) -> bool {
+        false
+    }
+
     fn stat(&mut self, path: &str) -> Result<Entry, Error>;
 
     /// Enumerate ordinary children; dot entries are namespace traversal, not children.
@@ -162,6 +167,7 @@ pub fn serve(
 }
 
 fn serve_transport(state: Transport, volume: &mut impl Volume) -> Result<WorkerReturn, String> {
+    let mut sync_failure = None;
     use crate::contracts::filesystem;
     let Transport {
         control,
@@ -203,6 +209,9 @@ fn serve_transport(state: Transport, volume: &mut impl Volume) -> Result<WorkerR
             if &command[..count] == filesystem::WORKER_HANDOFF {
                 // Requests are sequential. This branch is entered only after
                 // the preceding reply was published and its buffer borrow ended.
+                if let Some(error) = sync_failure {
+                    return Err(show(error));
+                }
                 volume.sync().map_err(show)?;
                 return Ok(WorkerReturn::Handoff(Transport {
                     control,
@@ -237,6 +246,7 @@ fn serve_transport(state: Transport, volume: &mut impl Volume) -> Result<WorkerR
         // shared byte range. Kernel waits for the reply before accessing it.
         let result = dispatch(
             volume,
+            &mut sync_failure,
             request,
             unsafe { buffer.bytes_mut() },
             unsafe { window.bytes() },
@@ -321,91 +331,123 @@ pub fn return_block(
 
 fn dispatch(
     volume: &mut impl Volume,
+    sync_failure: &mut Option<Error>,
     request: Request<'_>,
     data: &mut [u8],
     window: &[u8],
     reply: &mut [u8; protocol::RESPONSE_BYTES],
 ) -> Result<Option<Error>, String> {
     let mut entry = Entry::empty();
-    let result = (|| match request.operation {
-        Operation::Stat => {
-            entry = volume.stat(request.path)?;
-            Ok(0)
-        }
-        Operation::ReadDirectory => {
-            let length = usize::try_from(request.length).map_err(|_| Error::InvalidInput)?;
-            if request.offset != 0
-                || !request.target.is_empty()
-                || request.accessed.is_some()
-                || request.modified.is_some()
-                || !(protocol::DIRECTORY_MIN_BYTES..=protocol::DIRECTORY_BATCH_BYTES)
-                    .contains(&length)
-            {
-                return Err(Error::InvalidInput);
+    let result = sync_failure
+        .map_or(Ok(()), Err)
+        .and_then(|()| match request.operation {
+            Operation::Stat => {
+                entry = volume.stat(request.path)?;
+                Ok(0)
             }
-            volume
-                .read_directory(
-                    request.path,
-                    request.cursor,
-                    data.get_mut(..length).ok_or(Error::InvalidInput)?,
-                )
-                .map(|n| n as u64)
-        }
-        Operation::Read => {
-            let length = usize::try_from(request.length).map_err(|_| Error::InvalidInput)?;
-            volume
-                .read(
-                    request.path,
-                    request.offset,
-                    data.get_mut(..length).ok_or(Error::InvalidInput)?,
-                )
-                .map(|n| n as u64)
-        }
-        Operation::ReadExtents => {
-            let length = usize::try_from(request.length).map_err(|_| Error::InvalidInput)?;
-            if length > protocol::DATA_BYTES || !request.target.is_empty() {
-                return Err(Error::InvalidInput);
+            Operation::ReadDirectory => {
+                let length = usize::try_from(request.length).map_err(|_| Error::InvalidInput)?;
+                if request.offset != 0
+                    || !request.target.is_empty()
+                    || request.accessed.is_some()
+                    || request.modified.is_some()
+                    || !(protocol::DIRECTORY_MIN_BYTES..=protocol::DIRECTORY_BATCH_BYTES)
+                        .contains(&length)
+                {
+                    return Err(Error::InvalidInput);
+                }
+                volume
+                    .read_directory(
+                        request.path,
+                        request.cursor,
+                        data.get_mut(..length).ok_or(Error::InvalidInput)?,
+                    )
+                    .map(|n| n as u64)
             }
-            volume
-                .read_extents(request.path, request.offset, length, data)
-                .map(|n| n as u64)
-        }
-        Operation::ReadLink => {
-            let length = usize::try_from(request.length).map_err(|_| Error::InvalidInput)?;
-            volume
-                .readlink(
-                    request.path,
-                    data.get_mut(..length).ok_or(Error::InvalidInput)?,
-                )
-                .map(|n| n as u64)
-        }
-        Operation::Write => {
-            if request.window_token == 0 {
-                return Err(Error::InvalidInput);
+            Operation::Read => {
+                let length = usize::try_from(request.length).map_err(|_| Error::InvalidInput)?;
+                volume
+                    .read(
+                        request.path,
+                        request.offset,
+                        data.get_mut(..length).ok_or(Error::InvalidInput)?,
+                    )
+                    .map(|n| n as u64)
             }
-            let length = usize::try_from(request.length).map_err(|_| Error::InvalidInput)?;
-            volume
-                .write_window(
-                    request.path,
-                    request.offset,
-                    window.get(..length).ok_or(Error::InvalidInput)?,
-                    request.window_token,
-                )
-                .map(|n| n as u64)
+            Operation::ReadExtents => {
+                let length = usize::try_from(request.length).map_err(|_| Error::InvalidInput)?;
+                if length > protocol::DATA_BYTES || !request.target.is_empty() {
+                    return Err(Error::InvalidInput);
+                }
+                volume
+                    .read_extents(request.path, request.offset, length, data)
+                    .map(|n| n as u64)
+            }
+            Operation::ReadLink => {
+                let length = usize::try_from(request.length).map_err(|_| Error::InvalidInput)?;
+                volume
+                    .readlink(
+                        request.path,
+                        data.get_mut(..length).ok_or(Error::InvalidInput)?,
+                    )
+                    .map(|n| n as u64)
+            }
+            Operation::Write => {
+                if request.window_token == 0 {
+                    return Err(Error::InvalidInput);
+                }
+                let length = usize::try_from(request.length).map_err(|_| Error::InvalidInput)?;
+                volume
+                    .write_window(
+                        request.path,
+                        request.offset,
+                        window.get(..length).ok_or(Error::InvalidInput)?,
+                        request.window_token,
+                    )
+                    .map(|n| n as u64)
+            }
+            Operation::Create if request.length <= 1 => {
+                volume.create(request.path, request.length != 0).map(|_| 0)
+            }
+            Operation::Create => Err(Error::InvalidInput),
+            Operation::Remove => volume.remove(request.path).map(|_| 0),
+            Operation::Rename => volume.rename(request.path, request.target).map(|_| 0),
+            Operation::Resize => volume.resize(request.path, request.length).map(|_| 0),
+            Operation::Sync => volume.sync().map(|_| 0),
+            Operation::SetMetadata => volume
+                .set_times(request.path, request.accessed, request.modified)
+                .map(|_| 0),
+        });
+    let mutation = matches!(
+        request.operation,
+        Operation::Write
+            | Operation::Create
+            | Operation::Remove
+            | Operation::Rename
+            | Operation::Resize
+            | Operation::SetMetadata
+    );
+    let result = if mutation && !volume.read_only() && sync_failure.is_none() {
+        match volume.sync() {
+            Ok(()) => result,
+            Err(error) => {
+                *sync_failure = Some(error);
+                // Preserve accepted append progress; the next RPC reports the
+                // latched fence error instead of encouraging a duplicate retry.
+                match result {
+                    Ok(n) if request.operation == Operation::Write && n != 0 => Ok(n),
+                    Err(original) => Err(original),
+                    _ => Err(error),
+                }
+            }
         }
-        Operation::Create if request.length <= 1 => {
-            volume.create(request.path, request.length != 0).map(|_| 0)
-        }
-        Operation::Create => Err(Error::InvalidInput),
-        Operation::Remove => volume.remove(request.path).map(|_| 0),
-        Operation::Rename => volume.rename(request.path, request.target).map(|_| 0),
-        Operation::Resize => volume.resize(request.path, request.length).map(|_| 0),
-        Operation::Sync => volume.sync().map(|_| 0),
-        Operation::SetMetadata => volume
-            .set_times(request.path, request.accessed, request.modified)
-            .map(|_| 0),
-    })();
+    } else {
+        result
+    };
 
+    if request.operation == Operation::Sync && sync_failure.is_none() {
+        *sync_failure = result.err();
+    }
     let failure = result.err();
     Response {
         sequence: request.sequence,
