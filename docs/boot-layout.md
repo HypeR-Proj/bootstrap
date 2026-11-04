@@ -8,7 +8,7 @@ SPDX-License-Identifier: Apache-2.0
 The initial RAM archive contains only static bootstrap and recovery programs.
 Stage-1 mounts the independent system volume temporarily at `/system`, then
 switches that filesystem to `/` **before** loading system init. The default system
-volume is read-only EROFS; writable persistent files live on the FAT volume at
+volume is read-only EROFS; writable persistent files live on the F2FS volume at
 `/data`. Formal programs and shared libraries are not embedded in the bootstrap
 archive. Plain `make`, `make rebuild` and `make run` use this deployment.
 
@@ -43,7 +43,7 @@ The initial archive directly contains `/init`, `/svc`, `/bin`, `/etc`, `/vm`,
 /lib -> lib64                      library-directory alias
 /boot/                             original archive until bootstrap retirement
 /tmp/                              separate writable RAM filesystem
-/data/                             persistent FAT volume mounted in the formal environment
+/data/                             persistent F2FS volume mounted in the formal environment
 ```
 
 The system image includes empty `/boot`, `/tmp` and `/data` mountpoint directories,
@@ -127,3 +127,8 @@ records, ownership and retirement conditions.
 
 See [boot profiles and mount policy](boot-policy.md) for profile
 selection, fstab entries, recovery behavior and image customization.
+
+The bootstrap recovery image contains FAT and EROFS workers only. After a failed
+formal-system handoff, the EROFS system volume remains available; mounting F2FS
+data reports that its worker is unavailable. The F2FS worker belongs to the
+formal system and is not embedded in stage1.

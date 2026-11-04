@@ -96,11 +96,11 @@ fn verify_handle(file: &mut File, expected: &[u8]) -> io::Result<()> {
     Ok(())
 }
 
-fn concurrent_contents() -> io::Result<()> {
+fn concurrent_contents(reader_path: &str) -> io::Result<()> {
     use std::sync::Barrier;
 
     let mut writer = OpenOptions::new().write(true).open(COHERENCE)?;
-    let mut reader = File::open(COHERENCE_ALIAS)?;
+    let mut reader = File::open(reader_path)?;
     let barrier = Barrier::new(2);
     std::thread::scope(|scope| {
         let writing = scope.spawn(|| {
@@ -155,14 +155,28 @@ fn concurrent_contents() -> io::Result<()> {
     })
 }
 
-fn cache_transitions() -> io::Result<()> {
+fn cache_transitions(fat_aliases: bool) -> io::Result<()> {
     println!("BOARD-STORAGE: creating coherence file");
     let mut writer = File::create(COHERENCE)?;
     let mut expected = vec![0x31; 8192 + 37];
     writer.write_all(&expected)?;
-    // FAT case aliases must resolve to the same content owner as separate
-    // opens with the stored spelling. Full reads warm all affected pages.
-    let mut reader = File::open(COHERENCE_ALIAS)?;
+    // FAT aliases must share content ownership. Case-sensitive filesystems
+    // must reject that spelling, then exercise coherence through exact opens.
+    let reader_path = if fat_aliases {
+        COHERENCE_ALIAS
+    } else {
+        match File::open(COHERENCE_ALIAS) {
+            Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+            Err(error) => return Err(error),
+            Ok(_) => {
+                return Err(io::Error::other(
+                    "case-sensitive lookup accepted a case alias",
+                ));
+            }
+        }
+        COHERENCE
+    };
+    let mut reader = File::open(reader_path)?;
     verify_handle(&mut reader, &expected)?;
     println!("BOARD-STORAGE: coherence pages warmed");
     writer.set_len(4093)?;
@@ -174,7 +188,7 @@ fn cache_transitions() -> io::Result<()> {
     verify_handle(&mut reader, &expected)?;
     println!("BOARD-STORAGE: coherence extension verified");
 
-    let truncated = File::create(COHERENCE_ALIAS)?;
+    let truncated = File::create(reader_path)?;
     verify_handle(&mut reader, &[])?;
     println!("BOARD-STORAGE: coherence truncate verified");
     drop(truncated);
@@ -188,7 +202,7 @@ fn cache_transitions() -> io::Result<()> {
     drop(writer);
     drop(reader);
     println!("BOARD-STORAGE: starting concurrent coherence reads and writes");
-    concurrent_contents()?;
+    concurrent_contents(reader_path)?;
     println!("BOARD-STORAGE: concurrent coherence verified; removing file");
     remove_closed_file(COHERENCE)?;
     println!("BOARD-STORAGE: shared content coherence PASS");
@@ -219,7 +233,7 @@ fn remove_closed_file(path: &str) -> io::Result<()> {
 }
 
 #[cfg(target_os = "hyper")]
-fn cached_identity_lifetime() -> io::Result<()> {
+fn cached_identity_lifetime(fat_aliases: bool) -> io::Result<()> {
     const BEFORE: &str = "/data/acceptance/cache-identity-before";
     const AFTER: &str = "/data/acceptance/cache-identity-after";
     const OLD_FILE: &str = "/data/acceptance/cache-identity-before/identity.bin";
@@ -245,7 +259,7 @@ fn cached_identity_lifetime() -> io::Result<()> {
     // runs on the reaper. Yield a scheduling interval before the new opens so
     // this checks page-owned identity retention after ordinary handle closure.
     std::thread::sleep(Duration::from_millis(50));
-    for path in [OLD_FILE, OLD_ALIAS] {
+    for path in [OLD_FILE, if fat_aliases { OLD_ALIAS } else { OLD_FILE }] {
         let mut reopened = File::open(path)?;
         if reopened.metadata()?.identity() != identity {
             return Err(io::Error::other(
@@ -303,7 +317,7 @@ fn directory_open_errors() -> io::Result<()> {
     Ok(())
 }
 
-// This runs through the FAT worker and std on a real remote volume. Traversal
+// This runs through a filesystem worker and std on a real remote volume. Traversal
 // must release its own directory leases before remove-if, including paged and
 // nested directories, without deleting a sibling or reusing stale identities.
 fn remote_recursive_removal() -> io::Result<()> {
@@ -339,7 +353,12 @@ fn remote_recursive_removal() -> io::Result<()> {
     Ok(())
 }
 
-fn run(mode: &str) -> io::Result<()> {
+fn run(mode: &str, naming: &str) -> io::Result<()> {
+    let fat_aliases = match naming {
+        "case-sensitive" => false,
+        "fat-aliases" => true,
+        _ => return Err(io::Error::other("expected case-sensitive or fat-aliases")),
+    };
     println!("BOARD-STORAGE: {mode} started");
     if mode == "write" {
         fs::create_dir_all(DIRECTORY)?;
@@ -419,9 +438,9 @@ fn run(mode: &str) -> io::Result<()> {
         println!("BOARD-STORAGE: renamed handle verified; copying payload");
         fs::copy(PAYLOAD, COPY)?;
         println!("BOARD-STORAGE: payload copied");
-        cache_transitions()?;
+        cache_transitions(fat_aliases)?;
         #[cfg(target_os = "hyper")]
-        cached_identity_lifetime()?;
+        cached_identity_lifetime(fat_aliases)?;
         // The second fence includes the rename and copy's directory entries.
         OpenOptions::new().write(true).open(COPY)?.sync_all()?;
         println!("BOARD-STORAGE: copy synchronized");
@@ -441,7 +460,10 @@ fn run(mode: &str) -> io::Result<()> {
 
 fn main() -> ExitCode {
     let mode = std::env::args().nth(1).unwrap_or_default();
-    match run(&mode) {
+    let naming = std::env::args()
+        .nth(2)
+        .unwrap_or_else(|| "case-sensitive".into());
+    match run(&mode, &naming) {
         Ok(()) => {
             println!("BOARD-STORAGE: {mode} PASS");
             ExitCode::SUCCESS
