@@ -45,12 +45,12 @@ pub(super) fn export(
                 CapabilityReceiveSlot::new::<VmoObject>(filesystem::SERVER_BUFFER_RIGHTS),
                 CapabilityReceiveSlot::new::<BlockQueueObject>(filesystem::QUEUE_RIGHTS),
             ];
-            let mut bytes = [MaybeUninit::uninit(); 16];
+            let mut bytes = [MaybeUninit::uninit(); 24];
             let message = worker
                 .control
                 .receive(crate::deadline()?, &mut bytes, &mut slots)
                 .map_err(show)?;
-            if message.bytes().len() != 16
+            if message.bytes().len() != 24
                 || &message.bytes()[..8] != filesystem::WORKER_STATE
                 || message.capability_count() != 4
             {

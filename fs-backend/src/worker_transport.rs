@@ -306,9 +306,11 @@ pub fn return_block(
                 )
                 .map_err(show)?,
             ];
-            let mut record = [0; 16];
+            let mut record = [0; 24];
             record[..8].copy_from_slice(crate::contracts::filesystem::WORKER_STATE);
-            record[8..].copy_from_slice(&state.sequence.to_le_bytes());
+            record[8..16].copy_from_slice(&state.sequence.to_le_bytes());
+            // Bootstrap media stay synchronous; no VFS writeback ownership.
+            record[16..24].copy_from_slice(&0_u64.to_le_bytes());
             crate::contracts::io::send_capabilities(
                 &state.control,
                 &record,
@@ -413,6 +415,7 @@ fn dispatch(
             Operation::Remove => volume.remove(request.path).map(|_| 0),
             Operation::Rename => volume.rename(request.path, request.target).map(|_| 0),
             Operation::Resize => volume.resize(request.path, request.length).map(|_| 0),
+            Operation::TakeWriteback => Ok(0),
             Operation::Sync => volume.sync().map(|_| 0),
             Operation::SetMetadata => volume
                 .set_times(request.path, request.accessed, request.modified)
