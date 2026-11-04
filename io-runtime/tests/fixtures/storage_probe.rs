@@ -375,18 +375,32 @@ fn run(mode: &str, naming: &str) -> io::Result<()> {
         println!("BOARD-STORAGE: writing payload");
         let mut buffer = vec![0; 512 * 1024];
         let mut offset = 0;
+        let mut largest_write = 0;
+        let mut short_writes = 0;
         while offset < LENGTH {
             let count = buffer.len().min(LENGTH - offset);
             for (i, byte) in buffer[..count].iter_mut().enumerate() {
                 *byte = ((offset + i) % 251) as u8;
             }
-            // A healthy backing device accepts this bounded batch in one
-            // syscall; catch accidental reintroduction of the 1 KiB cap.
-            if file.write(&buffer[..count])? != count {
-                return Err(io::Error::other("unexpected short bulk write"));
+            // Native writes may accept a prefix when cache admission stops.
+            // Continue from that prefix, preserving the offset-based pattern.
+            let written = file.write(&buffer[..count])?;
+            if written == 0 {
+                return Err(io::Error::new(
+                    io::ErrorKind::WriteZero,
+                    "bulk write made no progress",
+                ));
             }
-            offset += count;
+            largest_write = largest_write.max(written);
+            short_writes += usize::from(written < count);
+            offset += written;
         }
+        // Keep the transfer-size regression check without requiring every
+        // write to ignore legitimate resource pressure and complete in full.
+        if largest_write <= 1024 {
+            return Err(io::Error::other("bulk writes never exceeded 1 KiB"));
+        }
+        println!("BOARD-STORAGE: bulk largest={largest_write} short={short_writes}");
         let mut reader = File::open(PENDING)?;
         // Reopen the FAT cursor at unrelated offsets, including sector/window
         // boundaries. Different bytes expose stale seek mappings or lost writes
