@@ -64,6 +64,10 @@ impl ReadDevice for Device {
 struct Erofs(hyper_fs_erofs::Volume<Device>);
 
 impl Volume for Erofs {
+    fn capabilities(&self) -> protocol::Capabilities {
+        protocol::Capabilities::READ_EXTENTS
+    }
+
     fn read_only(&self) -> bool {
         true
     }

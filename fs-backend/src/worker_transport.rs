@@ -14,6 +14,10 @@ use hyper_os::{
 };
 
 pub trait Volume {
+    fn capabilities(&self) -> protocol::Capabilities {
+        protocol::Capabilities::NONE
+    }
+
     /// Bootstrap supports synchronous persistent filesystems and read-only providers.
     fn read_only(&self) -> bool {
         false
@@ -343,6 +347,18 @@ fn dispatch(
     let result = sync_failure
         .map_or(Ok(()), Err)
         .and_then(|()| match request.operation {
+            Operation::Capabilities => {
+                if !request.path.is_empty()
+                    || !request.target.is_empty()
+                    || request.offset != 0
+                    || request.length != 0
+                    || request.accessed.is_some()
+                    || request.modified.is_some()
+                {
+                    return Err(Error::InvalidInput);
+                }
+                Ok(volume.capabilities().bits())
+            }
             Operation::Stat => {
                 entry = volume.stat(request.path)?;
                 Ok(0)
@@ -476,7 +492,7 @@ fn dispatch(
         result,
         entry,
     }
-    .encode(reply)
+    .encode_with_features(reply, protocol::ResponseFeatures::CAPABILITY_QUERY)
     .ok_or_else(|| format!("invalid filesystem {:?} response", request.operation))?;
     Ok(failure)
 }
