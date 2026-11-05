@@ -417,6 +417,20 @@ fn dispatch(
             Operation::Resize => volume.resize(request.path, request.length).map(|_| 0),
             Operation::TakeWriteback => Ok(0),
             Operation::Sync => volume.sync().map(|_| 0),
+            Operation::SyncFile => {
+                if !request.target.is_empty()
+                    || request.offset != 0
+                    || request.accessed.is_some()
+                    || request.modified.is_some()
+                    || protocol::SyncMode::decode(request.length).is_none()
+                {
+                    return Err(Error::InvalidInput);
+                }
+                // Bootstrap providers are synchronous or read-only; no recovery
+                // log policy is required here.
+                volume.stat(request.path)?;
+                volume.sync().map(|_| 0)
+            }
             Operation::SetMetadata => volume
                 .set_times(request.path, request.accessed, request.modified)
                 .map(|_| 0),
@@ -448,8 +462,12 @@ fn dispatch(
         result
     };
 
-    if request.operation == Operation::Sync && sync_failure.is_none() {
-        *sync_failure = result.err();
+    if sync_failure.is_none()
+        && let Err(error) = result
+        && (request.operation == Operation::Sync
+            || (request.operation == Operation::SyncFile && error.terminal()))
+    {
+        *sync_failure = Some(error);
     }
     let failure = result.err();
     Response {
