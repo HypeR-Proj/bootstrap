@@ -29,7 +29,7 @@ writable global state.
 
 The first argument register (`x0` or `a0`) holds a child-owned ByteChannel handle.
 SP identifies the top of an empty guarded 128 KiB stack. One queued message
-contains the 96-byte `loader_startup` header, tagged startup handle records,
+contains the 112-byte `loader_startup` header, tagged startup handle records,
 and bounded opaque launch data. It supplies an ordinary executable File with `READ|EXECUTE|PROTECT`,
 root/stack VMAR handles, bootstrap mapping bounds, a reply flag and the child's
 ExecutionContext, ObjectFactory and SystemInfo capabilities. The initial channel
@@ -83,3 +83,12 @@ release on parser failure, rejected interpreters, static
 and dynamic retirement metadata, maximal startup packets and relative
 relocations. Native images and QEMU acceptance additionally verify the mapped
 entry and final-stack transitions; host tests do not emulate page tables.
+
+The optional kernel vDSO arrives as paired image/data VMO capabilities in the
+startup header. The loader uses lib-system's allocation-free mapping helper to
+reserve an ELF-described region, maps code RX and observations RO/NX, then closes
+the pair and passes the ELF base in auxiliary-vector entry 33. A failed optional
+mapping destroys its partial region and selects syscall fallback. These mappings
+remain independent of the disposable loader and initial stack. The kernel owns
+code provenance, live backing and permission ceilings; it does not load an
+application image on behalf of this helper.
