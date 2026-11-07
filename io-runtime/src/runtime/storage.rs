@@ -29,8 +29,10 @@ const SHARED_BASE: u64 = RAM_BASE + RAM_BYTES;
 
 mod discovery;
 mod filesystem;
+mod geometry;
 
 pub(super) struct NativeStorage {
+    geometry: geometry::Geometry,
     scratch: Option<SharedReadMapping>,
     // The guest-memory object pins the backing after the creation VMO closes.
     grant: OwnedHandle<GuestMemoryObject>,
@@ -54,8 +56,10 @@ impl NativeStorage {
         client: u32,
         policy: Option<Volume>,
     ) -> Result<Self> {
-        let memory = WritableVmo::create_contiguous(block::MEMORY_BYTES).map_err(show)?;
-        let dma = device::dma_extent(authority, memory.as_handle_ref(), 0, block::MEMORY_BYTES)
+        let geometry = geometry::Geometry::new(SHARED_BASE, client, block::MEMORY_BYTES)
+            .ok_or("invalid Native storage shared-memory geometry")?;
+        let memory = WritableVmo::create_contiguous(geometry.bytes()).map_err(show)?;
+        let dma = device::dma_extent(authority, memory.as_handle_ref(), 0, geometry.bytes())
             .map_err(show)?;
         let grant = vm::create_guest_memory(memory.as_handle_ref()).map_err(show)?;
         let scratch = if client == 0 {
@@ -66,6 +70,7 @@ impl NativeStorage {
             None
         };
         Ok(Self {
+            geometry,
             scratch,
             grant,
             dma,
@@ -80,7 +85,7 @@ impl NativeStorage {
             id: self.client,
             shared_memory: SharedMemory {
                 base: self.shared_base(),
-                size: block::MEMORY_BYTES,
+                size: self.geometry.bytes(),
                 guest_base: self.shared_base(),
             },
             mailbox: MmioDevice {
@@ -101,7 +106,7 @@ impl NativeStorage {
         DmaRange {
             dma_base: self.dma.physical_base,
             cpu_base: self.shared_base(),
-            size: block::MEMORY_BYTES,
+            size: self.geometry.bytes(),
         }
     }
     pub(super) fn mapping(&self) -> SharedGrant<'_> {
@@ -109,14 +114,14 @@ impl NativeStorage {
             memory: self.grant.as_handle_ref(),
             guest_offset: self.shared_base() - RAM_BASE,
             memory_offset: 0,
-            size: block::MEMORY_BYTES,
+            size: self.geometry.bytes(),
         }
     }
     fn shared_base(&self) -> u64 {
-        SHARED_BASE + u64::from(self.client) * block::MEMORY_BYTES
+        self.geometry.base()
     }
     pub(super) fn address_space_end(&self) -> u64 {
-        self.shared_base() + block::MEMORY_BYTES - RAM_BASE
+        self.geometry.end() - RAM_BASE
     }
     pub(super) fn install(&mut self, guest: &InstalledGuest) -> Result<()> {
         if self.client == 0 {
@@ -151,7 +156,7 @@ impl NativeStorage {
                 command: Command::Prepare {
                     alias: self.shared_base(),
                     guest_base: self.shared_base(),
-                    length: block::MEMORY_BYTES,
+                    length: self.geometry.bytes(),
                     mapping_token: 0,
                 },
             },

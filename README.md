@@ -76,6 +76,12 @@ client-admission messages. Configured and transferred identities use the same
 local validation. Recovery delegates filesystem control and process inspection;
 it has no formal VM-manager connector to delegate.
 
+The I/O runtime keeps partition discovery in the appliance's 1 MiB read window.
+Each Native virtio-scsi initiator receives its own 2 MiB contiguous grant, large
+enough for two 512 KiB commands and queue metadata. Grant allocation, DMA ranges,
+guest mappings and backend setup use the same per-client geometry; the discovery
+window does not grow when Native transport capacity changes.
+
 FAT mutation and flush operations remain available to recovery tools. The boot
 profile's read-only system mount does not make every recovery filesystem
 read-only. Bootstrap format implementations remain independently maintained;
