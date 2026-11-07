@@ -40,3 +40,8 @@ pub mod contracts;
 
 #[path = "../../logging.rs"]
 pub mod logging;
+
+// Exercise the same checked layout used before grant allocation at startup.
+#[cfg(test)]
+#[path = "runtime/storage/geometry.rs"]
+mod storage_geometry;

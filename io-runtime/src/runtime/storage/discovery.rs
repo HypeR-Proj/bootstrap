@@ -160,7 +160,7 @@ pub(super) fn bind_partitions(
         guest,
         log,
         transaction: 2,
-        max_read: (max_read as usize).min(block::MEMORY_BYTES as usize),
+        max_read: (max_read as usize).min(scratch.geometry.bytes() as usize),
         limit: deadline(45)?,
     };
     let policies: Vec<_> = policy.native.iter().chain(&policy.guests).collect();
