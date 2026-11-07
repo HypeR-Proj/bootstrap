@@ -357,7 +357,9 @@ fn dispatch(
                 {
                     return Err(Error::InvalidInput);
                 }
-                Ok(volume.capabilities().bits())
+                // This dispatcher has no asynchronous receipt owner. A backend
+                // ability alone cannot advertise a serving protocol we lack.
+                Ok(volume.capabilities().bits() & !protocol::Capabilities::ASYNC_WRITEBACK.bits())
             }
             Operation::Stat => {
                 entry = volume.stat(request.path)?;
@@ -424,6 +426,12 @@ fn dispatch(
                     )
                     .map(|n| n as u64)
             }
+            Operation::SubmitWriteback => Err(if volume.read_only() {
+                Error::ReadOnly
+            } else {
+                Error::Unsupported
+            }),
+            Operation::ReapWriteback => Err(Error::Unsupported),
             Operation::Create if request.length <= 1 => {
                 volume.create(request.path, request.length != 0).map(|_| 0)
             }
@@ -500,3 +508,7 @@ fn dispatch(
 fn show(error: impl core::fmt::Debug) -> String {
     format!("{error:?}")
 }
+
+#[cfg(test)]
+#[path = "worker_transport_tests.rs"]
+mod tests;
