@@ -179,3 +179,21 @@ Stage-1 retains the kernel's executable-publication authority (startup purpose
 recovery shell nor ordinary bootstrap services receive it automatically. An
 explicit manifest grant may name `bootstrap.executable-authority`, purpose
 `executable-authority`, and the `create-executable` right.
+
+## I/O appliance entropy device
+
+Pi products explicitly select `io-vm.entropy-device` with profile
+`bcm2711-rng200` and compatible `brcm,bcm2711-rng200`. Bootstrap validates a
+unique unowned firmware device with one 40-byte register bank and no interrupt,
+then atomically claims it. It never infers a host physical address from the board
+name. The Linux guest receives its own IRQ-free rng200 node and owns the driver;
+bootstrap forwards only the supported aligned 32-bit register operations through
+the existing single MMIO worker. No cryptographic generator runs in bootstrap.
+
+The version-3 I/O ownership handoff carries that physical capability, plus the
+owner mailbox binding, epoch, full negotiated feature bits and last completed
+transaction. Transfer occurs with no owner request outstanding; the formal
+runtime continues the transaction sequence. Rejected adoption retains the same
+hardware and protocol state. Legacy control-only appliances have no block-owner
+state and cannot supply the secure-random service. Neither handoff nor hardware
+retirement claims that a userspace-controlled device has been safely reset.

@@ -74,7 +74,7 @@ mod tests {
         assert!(Geometry::new(1, 0, native).is_none());
         assert!(Geometry::new(0, 1, 1024 * 1024 + 32768).is_none());
         assert!(Geometry::new(0, 0, 512 * 1024).is_none());
-        let last_aligned = u64::MAX & !(native - 1);
+        let last_aligned = !(native - 1);
         assert!(Geometry::new(last_aligned, 1, native).is_none());
         assert!(Geometry::new(last_aligned, 0, native).is_some());
         assert!(Geometry::new(last_aligned, 2, native).is_none());

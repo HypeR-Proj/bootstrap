@@ -28,6 +28,8 @@ pub(super) struct Owner {
     pub mode: WorkerMode,
     pub physical: OwnedHandle<PhysicalDeviceObject>,
     pub network: Option<OwnedHandle<PhysicalDeviceObject>>,
+    pub entropy: Option<OwnedHandle<PhysicalDeviceObject>>,
+    pub owner_control: Option<handoff::OwnerControl>,
     pub native_memory: Vec<OwnedHandle<GuestMemoryObject>>,
     pub native_mailboxes: Vec<Mailbox>,
     pub broker: Option<Broker>,
@@ -55,6 +57,9 @@ impl Owner {
         if let Some(network) = &self.network {
             slots.push(slot(Kind::NetworkDevice, network.as_handle_ref())?);
         }
+        if let Some(entropy) = &self.entropy {
+            slots.push(slot(Kind::EntropyDevice, entropy.as_handle_ref())?);
+        }
         if let Some(broker) = &self.broker {
             slots.push(slot(Kind::Broker, broker.endpoint.as_handle_ref())?);
         }
@@ -77,7 +82,7 @@ impl Owner {
             }
         }
         let description = Description {
-            version: 2,
+            version: 3,
             memory_base: hyper_io_runtime::guest::install::RAM_BASE,
             memory_size: hyper_io_runtime::guest::install::RAM_BYTES,
             name: self.guest.name().into(),
@@ -86,6 +91,8 @@ impl Owner {
             cpus: self.guest.cpus.len(),
             native: self.native_memory.len(),
             network: self.network.is_some(),
+            entropy: self.entropy.is_some(),
+            owner_control: self.owner_control,
             broker: self.broker.is_some(),
             clients: self
                 .broker
@@ -261,6 +268,7 @@ struct Transfer {
     hotplug_interrupt: Option<OwnedHandle<GuestInterruptObject>>,
     physical: Option<OwnedHandle<PhysicalDeviceObject>>,
     network: Option<OwnedHandle<PhysicalDeviceObject>>,
+    entropy: Option<OwnedHandle<PhysicalDeviceObject>>,
     broker: Option<OwnedHandle<CapabilityChannelObject>>,
     native_memory: Vec<Option<OwnedHandle<GuestMemoryObject>>>,
     native_mailboxes: Vec<Option<OwnedHandle<GuestMailboxObject>>>,
@@ -301,6 +309,8 @@ fn transfer(
         mode,
         physical,
         network,
+        entropy,
+        owner_control,
         native_memory,
         native_mailboxes,
         broker,
@@ -331,6 +341,8 @@ fn transfer(
                 mode,
                 physical,
                 network,
+                entropy,
+                owner_control,
                 native_memory,
                 native_mailboxes,
                 broker,
@@ -373,6 +385,7 @@ fn transfer(
         hotplug_interrupt: Some(hotplug_interrupt),
         physical: Some(physical),
         network,
+        entropy,
         broker,
         native_memory: native_memory.into_iter().map(Some).collect(),
         native_mailboxes: native_mailboxes
@@ -410,6 +423,9 @@ fn transfer(
     offer!(&mut state.physical);
     if state.network.is_some() {
         offer!(&mut state.network);
+    }
+    if state.entropy.is_some() {
+        offer!(&mut state.entropy);
     }
     if state.broker.is_some() {
         offer!(&mut state.broker);
@@ -486,6 +502,8 @@ fn transfer(
         worker: None,
         physical: state.physical.take().ok_or("missing storage device")?,
         network: state.network.take(),
+        entropy: state.entropy.take(),
+        owner_control,
         native_memory: state
             .native_memory
             .iter_mut()
@@ -526,18 +544,28 @@ fn transfer(
 }
 fn resume_worker(owner: &Owner) -> Result<Option<Worker>> {
     match owner.mode {
-        WorkerMode::None => worker::resume_bus(&owner.guest, owner.pcie.clone())
-            .map(Some)
-            .map_err(show),
-        WorkerMode::Sdhci => worker::resume(&owner.physical, &owner.guest, owner.pcie.clone())
-            .map(Some)
-            .map_err(show),
-        #[cfg(feature = "userspace-device-test")]
-        WorkerMode::VirtioTest => {
-            worker::resume_virtio_test(&owner.physical, &owner.guest, owner.pcie.clone())
+        WorkerMode::None => {
+            worker::resume_bus(&owner.guest, owner.entropy.as_ref(), owner.pcie.clone())
                 .map(Some)
                 .map_err(show)
         }
+        WorkerMode::Sdhci => worker::resume(
+            &owner.physical,
+            owner.entropy.as_ref(),
+            &owner.guest,
+            owner.pcie.clone(),
+        )
+        .map(Some)
+        .map_err(show),
+        #[cfg(feature = "userspace-device-test")]
+        WorkerMode::VirtioTest => worker::resume_virtio_test(
+            &owner.physical,
+            owner.entropy.as_ref(),
+            &owner.guest,
+            owner.pcie.clone(),
+        )
+        .map(Some)
+        .map_err(show),
         #[cfg(not(feature = "userspace-device-test"))]
         WorkerMode::VirtioTest => Err("test device consumer unavailable".into()),
     }
