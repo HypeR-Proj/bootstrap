@@ -39,7 +39,8 @@ const STORAGE_HANDOFF: u16 = 34;
 const FILESYSTEM_HANDOFF: u16 = 35;
 const CONSOLE_DRAIN: u16 = 36;
 const ROOT_TRANSITION: u16 = 37;
-const LAST_ROLE: u16 = ROOT_TRANSITION;
+const EXECUTABLE_AUTHORITY: u16 = 38;
+const LAST_ROLE: u16 = EXECUTABLE_AUTHORITY;
 
 const PROCESS_BASE: u16 = 100;
 const MAX_SLOTS: usize = 64;
@@ -116,6 +117,9 @@ impl<'a> InventoryOffer<'a> {
         }
         if let Some(handle) = &a.filesystem_control_client {
             offer.add(FILESYSTEM_CONTROL_CLIENT, handle.as_handle_ref())?;
+        }
+        if let Some(authority) = &a.executable {
+            offer.add(EXECUTABLE_AUTHORITY, authority.as_handle_ref())?;
         }
         if let Some(authority) = &a.vm_creation {
             offer.add(VM_AUTHORITY, authority.as_handle_ref())?;
