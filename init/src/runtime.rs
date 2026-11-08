@@ -141,6 +141,9 @@ impl Runtime {
             factory,
             group,
             domain,
+            executable: startup
+                .take_optional(startup::EXECUTABLE_AUTHORITY)
+                .map_err(|_| Error::OperatingSystem)?,
             vm_creation: startup
                 .take_optional(startup::VIRTUAL_MACHINE_CREATION_AUTHORITY)
                 .map_err(|_| Error::OperatingSystem)?,

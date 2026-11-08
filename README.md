@@ -173,3 +173,9 @@ finishes ownership transfer/retirement even if the reply is lost. A table is a
 sequence of mounts: earlier entries remain after a later error or cancellation.
 Inspect the live mount list before retrying. Boot-owned table processing has no
 external cancellation peer. These checks are maintained inside bootstrap.
+
+Stage-1 retains the kernel's executable-publication authority (startup purpose
+`4`) for the formal coordinator through private handoff role `38`. Neither the
+recovery shell nor ordinary bootstrap services receive it automatically. An
+explicit manifest grant may name `bootstrap.executable-authority`, purpose
+`executable-authority`, and the `create-executable` right.
