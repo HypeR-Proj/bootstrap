@@ -350,3 +350,22 @@ fn scheduling_role_can_preserve_kernel_policy_but_invalid_budgets_fail_admission
         assert!(parse(&source).is_err());
     }
 }
+
+#[test]
+fn entropy_hardware_requires_explicit_pi_selector() {
+    let mut source = board();
+    source["io-vm"]["entropy-device"] =
+        json!({"profile":"bcm2711-rng200","compatible":"brcm,bcm2711-rng200"});
+    assert!(parse(&source).is_err());
+    source["boot"] = json!("rpi5-firmware");
+    assert!(parse(&source).unwrap().entropy_device().is_some());
+    for bad in [
+        json!(null),
+        json!({}),
+        json!({"profile":"bcm2711-rng200","compatible":"other"}),
+        json!({"profile":"bcm2711-rng200","compatible":"brcm,bcm2711-rng200","extra":1}),
+    ] {
+        source["io-vm"]["entropy-device"] = bad;
+        assert!(parse(&source).is_err());
+    }
+}

@@ -138,7 +138,7 @@ pub(super) fn bind_partitions(
     guest: &mut InstalledGuest,
     log: &mut GuestLog,
     max_read: u32,
-) -> Result<()> {
+) -> Result<u64> {
     if clients.len() != policy.native.len() + 1
         || clients
             .iter()
@@ -188,10 +188,11 @@ pub(super) fn bind_partitions(
             sectors: selected.partition.sectors,
         })?;
     }
+    let last_transaction = controller.transaction;
     for (client, selected) in clients.iter_mut().skip(1).zip(&selected) {
         client.partition = Some(selected.partition.clone());
     }
-    Ok(())
+    Ok(last_transaction)
 }
 
 fn discover(controller: &mut Controller<'_>) -> Result<Catalog> {

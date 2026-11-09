@@ -34,6 +34,8 @@ struct IoVm {
     network_device: Option<Policy>,
     #[serde(default, deserialize_with = "present")]
     networks: Option<Vec<Network>>,
+    #[serde(rename = "entropy-device", default, deserialize_with = "present")]
+    entropy_device: Option<crate::entropy::Policy>,
 }
 
 /// A present optional field must carry its declared value, never JSON null.
@@ -97,6 +99,7 @@ pub struct Config {
     definition: Definition,
     device: Policy,
     network_device: Option<Policy>,
+    entropy_device: Option<crate::entropy::Policy>,
 }
 
 impl Config {
@@ -124,6 +127,7 @@ impl Config {
             configuration,
             device,
             network_device,
+            entropy_device,
             networks,
         } = board.io_vm;
         if matches!(device.profile(), hyper_os::device::Profile::VirtioMmioNet)
@@ -137,6 +141,9 @@ impl Config {
                 ))
         {
             return Err("I/O storage device requires a storage controller profile".into());
+        }
+        if entropy_device.is_some() && board.boot.as_deref() != Some("rpi5-firmware") {
+            return Err("entropy hardware requires rpi5-firmware".into());
         }
         validate_networks(network_device.as_ref(), networks.as_deref())?;
         if let Some(network) = network_device.as_ref() {
@@ -183,7 +190,12 @@ impl Config {
             definition,
             device,
             network_device,
+            entropy_device,
         })
+    }
+
+    pub fn entropy_device(&self) -> Option<&crate::entropy::Policy> {
+        self.entropy_device.as_ref()
     }
 
     pub fn definition(&self) -> &Definition {

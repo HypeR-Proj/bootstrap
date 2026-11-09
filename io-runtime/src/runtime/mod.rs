@@ -128,6 +128,14 @@ fn run(
     };
     let profile = device::profile_info(physical.as_handle_ref()).map_err(show)?;
     let network = PhysicalNetwork::claim(authority, config.network_device())?;
+    let entropy = config
+        .entropy_device()
+        .map(|policy| policy.claim(authority).map_err(show))
+        .transpose()?;
+    let entropy_node = entropy.as_ref().map(|_| MmioWindow {
+        base: hyper_io_runtime::rng200::BASE,
+        size: hyper_io_runtime::rng200::BYTES,
+    });
     let mut clients = Vec::new();
     if filesystem.is_some() {
         if storage_policy.native.is_empty() {
@@ -266,6 +274,7 @@ fn run(
                     clients: &descriptions,
                     virtio: storage_node,
                     network: network_node,
+                    entropy: entropy_node,
                     pci,
                     sdhci,
                     dma_ranges: &dma_ranges,
@@ -291,6 +300,7 @@ fn run(
                     clients: &[],
                     virtio: storage_node,
                     network: network_node,
+                    entropy: entropy_node,
                     pci,
                     sdhci,
                     dma_ranges: &[own_dma],
@@ -313,6 +323,13 @@ fn run(
     }];
     if let Some(assignment) = network.assignment() {
         assignments.push(assignment);
+    }
+    if let Some(device) = &entropy {
+        assignments.push(PhysicalAssignment {
+            device: device.as_handle_ref(),
+            base: hyper_io_runtime::rng200::BASE,
+            irq: hyper_io_runtime::rng200::RESERVED_IRQ,
+        });
     }
     let mut guest = install::install_mapped(
         startup,
@@ -337,6 +354,7 @@ fn run(
     let mut mailboxes = Vec::new();
     let mut guest_log = GuestLog::default();
     let mut hotplug_interrupt = None;
+    let mut owner_control = None;
     let outcome = (|| {
         for (base, length, cookie) in [
             (pcie::ECAM_BASE, pcie::ECAM_BYTES, pcie::ECAM_COOKIE),
@@ -373,6 +391,16 @@ fn run(
         if let Some(broker) = broker.as_mut() {
             broker.install(&guest)?;
         }
+        if entropy.is_some() {
+            vm::register_mmio(
+                guest.machine.as_handle_ref(),
+                hyper_io_runtime::rng200::BASE,
+                hyper_io_runtime::rng200::APERTURE,
+                core::num::NonZeroU64::new(hyper_io_runtime::rng200::COOKIE)
+                    .ok_or("invalid entropy cookie")?,
+            )
+            .map_err(show)?;
+        }
         if profile.profile == device::Profile::Userspace {
             use hyper_io_runtime::mmio as worker;
             vm::register_mmio(
@@ -383,12 +411,12 @@ fn run(
             )
             .map_err(|error| format!("register physical MMIO: {error:?}"))?;
             hardware_worker = Some(if sdhci.is_some() {
-                worker::start(&physical, &guest)
+                worker::start(&physical, entropy.as_ref(), &guest)
                     .map_err(|error| format!("start SDHCI worker: {error:?}"))?
             } else {
                 #[cfg(feature = "userspace-device-test")]
                 {
-                    worker::start_virtio_test(&physical, &guest)
+                    worker::start_virtio_test(&physical, entropy.as_ref(), &guest)
                         .map_err(|error| format!("start test device worker: {error:?}"))?
                 }
                 #[cfg(not(feature = "userspace-device-test"))]
@@ -398,7 +426,8 @@ fn run(
             });
         }
         if hardware_worker.is_none() {
-            hardware_worker = Some(hyper_io_runtime::mmio::start_bus(&guest).map_err(show)?);
+            hardware_worker =
+                Some(hyper_io_runtime::mmio::start_bus(&guest, entropy.as_ref()).map_err(show)?);
         }
         #[cfg(feature = "userspace-device-test")]
         println!("DEVICE-TEST: worker prepared");
@@ -415,6 +444,7 @@ fn run(
                     .map(hyper_os::capability_channel::CapabilityChannel::from_handle),
             },
             readiness,
+            &mut owner_control,
         )
     })();
     if matches!(outcome, Ok(true)) {
@@ -450,6 +480,8 @@ fn run(
                 mode,
                 physical,
                 network: network.into_device(),
+                entropy,
+                owner_control,
                 native_memory,
                 native_mailboxes: mailboxes,
                 broker,
@@ -512,6 +544,7 @@ fn supervise(
     guest_log: &mut GuestLog,
     storage: StorageBootstrap<'_>,
     readiness: &mut Option<OwnedHandle<ByteChannelObject>>,
+    owner_control: &mut Option<hyper_io_runtime::handoff::OwnerControl>,
 ) -> Result<bool> {
     let StorageBootstrap {
         clients,
@@ -550,11 +583,17 @@ fn supervise(
             match mailbox.receive(&mut record) {
                 Ok(length) => {
                     let max_read = if let Some(request) = management {
-                        let hyper_io_runtime::protocol::block::Reply::Hello { max_read } =
+                        let hyper_io_runtime::protocol::block::Reply::Hello { max_read, features } =
                             request.decode_reply(&record[..length]).map_err(show)?
                         else {
                             return Err("management HELLO omitted block capabilities".into());
                         };
+                        *owner_control = Some(hyper_io_runtime::handoff::OwnerControl {
+                            binding: 1,
+                            epoch: 1,
+                            last_transaction: 1,
+                            features,
+                        });
                         max_read
                     } else {
                         let reply = Reply::decode(&record[..length], hello).map_err(show)?;
@@ -565,7 +604,7 @@ fn supervise(
                     };
                     ready = true;
                     if let Some(provider) = filesystem.take() {
-                        let mounted = storage::mount_volumes(
+                        let (mounted, last_transaction) = storage::mount_volumes(
                             clients,
                             mailboxes,
                             provider,
@@ -574,6 +613,10 @@ fn supervise(
                             storage_policy,
                             max_read,
                         )?;
+                        owner_control
+                            .as_mut()
+                            .ok_or("missing owner control state")?
+                            .last_transaction = last_transaction;
                         let writer = readiness
                             .as_ref()
                             .ok_or("readiness capability already consumed")?;

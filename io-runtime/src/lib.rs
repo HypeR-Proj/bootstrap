@@ -10,6 +10,7 @@ pub mod storage_policy;
 pub mod config;
 
 pub mod device_policy;
+pub mod entropy;
 
 pub mod deadline;
 
@@ -30,6 +31,7 @@ pub mod guest;
 pub mod protocol;
 
 pub mod handoff;
+pub mod rng200;
 
 pub mod image;
 

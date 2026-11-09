@@ -213,11 +213,12 @@ pub(super) fn mount_volumes(
     guest_log: &mut GuestLog,
     policy: &hyper_io_runtime::storage_policy::Policy,
     max_read: u32,
-) -> Result<bool> {
+) -> Result<(bool, u64)> {
     if clients.is_empty() || clients.len() != mailboxes.len() {
         return Err("Native volume and mailbox tables differ".into());
     }
-    discovery::bind_partitions(clients, mailboxes, policy, guest, guest_log, max_read)?;
+    let last_transaction =
+        discovery::bind_partitions(clients, mailboxes, policy, guest, guest_log, max_read)?;
     let mut volumes = Vec::new();
     for (client, mailbox) in clients.iter_mut().zip(mailboxes).skip(1) {
         let features = exchange(
@@ -269,6 +270,7 @@ pub(super) fn mount_volumes(
         pending?;
         result
     })
+    .map(|mounted| (mounted, last_transaction))
 }
 
 fn exchange(

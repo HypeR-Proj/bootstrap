@@ -87,6 +87,7 @@ impl Drop for MachineGuard {
 
 struct Pump {
     physical: Option<OwnedHandle<PhysicalDeviceObject>>,
+    entropy: Option<OwnedHandle<PhysicalDeviceObject>>,
     machine: MachineGuard,
     cpus: Vec<Arc<OwnedHandle<VirtualCpuObject>>>,
     _stop: OwnedHandle<ByteChannelObject>,
@@ -104,10 +105,12 @@ struct Pump {
 /// and must not run the guest before this function succeeds.
 pub fn start(
     physical: &OwnedHandle<PhysicalDeviceObject>,
+    entropy: Option<&OwnedHandle<PhysicalDeviceObject>>,
     guest: &InstalledGuest,
 ) -> Result<Worker> {
     start_mode(
         Some(physical),
+        entropy,
         guest,
         Mode::Sdhci,
         true,
@@ -120,19 +123,22 @@ pub fn start(
 /// reset hardware or revalidate power-on register contents.
 pub fn resume(
     physical: &OwnedHandle<PhysicalDeviceObject>,
+    entropy: Option<&OwnedHandle<PhysicalDeviceObject>>,
     guest: &InstalledGuest,
     pcie: RootPort,
 ) -> Result<Worker> {
-    start_mode(Some(physical), guest, Mode::Sdhci, false, pcie)
+    start_mode(Some(physical), entropy, guest, Mode::Sdhci, false, pcie)
 }
 
 #[cfg(feature = "userspace-device-test")]
 pub fn start_virtio_test(
     physical: &OwnedHandle<PhysicalDeviceObject>,
+    entropy: Option<&OwnedHandle<PhysicalDeviceObject>>,
     guest: &InstalledGuest,
 ) -> Result<Worker> {
     start_mode(
         Some(physical),
+        entropy,
         guest,
         Mode::VirtioTest,
         true,
@@ -143,18 +149,33 @@ pub fn start_virtio_test(
 #[cfg(feature = "userspace-device-test")]
 pub fn resume_virtio_test(
     physical: &OwnedHandle<PhysicalDeviceObject>,
+    entropy: Option<&OwnedHandle<PhysicalDeviceObject>>,
     guest: &InstalledGuest,
     pcie: RootPort,
 ) -> Result<Worker> {
-    start_mode(Some(physical), guest, Mode::VirtioTest, false, pcie)
+    start_mode(
+        Some(physical),
+        entropy,
+        guest,
+        Mode::VirtioTest,
+        false,
+        pcie,
+    )
 }
 
 /// The empty `PCIe` slot also needs an independent consumer during disk waits.
-pub fn start_bus(guest: &InstalledGuest) -> Result<Worker> {
-    resume_bus(guest, RootPort::default())
+pub fn start_bus(
+    guest: &InstalledGuest,
+    entropy: Option<&OwnedHandle<PhysicalDeviceObject>>,
+) -> Result<Worker> {
+    resume_bus(guest, entropy, RootPort::default())
 }
-pub fn resume_bus(guest: &InstalledGuest, pcie: RootPort) -> Result<Worker> {
-    start_mode(None, guest, Mode::BusOnly, false, pcie)
+pub fn resume_bus(
+    guest: &InstalledGuest,
+    entropy: Option<&OwnedHandle<PhysicalDeviceObject>>,
+    pcie: RootPort,
+) -> Result<Worker> {
+    start_mode(None, entropy, guest, Mode::BusOnly, false, pcie)
 }
 
 #[derive(Clone, Copy)]
@@ -199,6 +220,7 @@ impl Mode {
 
 fn start_mode(
     physical: Option<&OwnedHandle<PhysicalDeviceObject>>,
+    entropy: Option<&OwnedHandle<PhysicalDeviceObject>>,
     guest: &InstalledGuest,
     mode: Mode,
     validate: bool,
@@ -266,7 +288,11 @@ fn start_mode(
             ObjectSignals::<VirtualCpuObject>::MMIO_REQUEST,
         )?);
     }
+    let entropy = entropy
+        .map(|device| device.duplicate(hyper_os::Rights::READ.union(hyper_os::Rights::WRITE)))
+        .transpose()?;
     let pump = Pump {
+        entropy,
         physical,
         machine,
         cpus,
@@ -328,7 +354,15 @@ impl Pump {
 
     fn mmio(&mut self, index: usize) -> Result<()> {
         if let Some(request) = vm::pending_mmio(self.cpus[index].as_handle_ref())? {
-            let completion = if request.device.get() == pcie::ECAM_COOKIE {
+            let completion = if request.device.get() == crate::rng200::COOKIE {
+                crate::rng200::forward(
+                    self.entropy
+                        .as_ref()
+                        .ok_or(Error::InvalidResponse)?
+                        .as_handle_ref(),
+                    request,
+                )?
+            } else if request.device.get() == pcie::ECAM_COOKIE {
                 let (bus, device, function, offset) =
                     pcie::decode_ecam(request.address).ok_or(Error::InvalidResponse)?;
                 let root = bus == 0 && device == 0 && function == 0;
