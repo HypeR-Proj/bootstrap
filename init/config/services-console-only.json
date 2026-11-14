@@ -85,7 +85,8 @@
             "write",
             "inspect",
             "set-attributes",
-            "lock-file"
+            "lock-file",
+            "sync-configure"
           ]
         },
         {

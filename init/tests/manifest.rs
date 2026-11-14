@@ -120,6 +120,7 @@ const EXECUTE: u64 = 0b10_0000_0000;
 const PROTECT: u64 = 1 << 35;
 const SET_ATTRIBUTES: u64 = 1 << 31;
 const LOCK_FILE: u64 = 1 << 32;
+const SYNC_CONFIGURE: u64 = 1 << 44;
 const CREATE_TASK_GROUP: u64 = 0b1_0000_0000_0000;
 const CREATE_RESOURCE_DOMAIN: u64 = 0b10_0000_0000_0000;
 const DERIVE: u64 = 0b0100_0000_0000_0000;
@@ -224,7 +225,8 @@ impl AuthorityPolicy for Policy {
                     | DUPLICATE
                     | TRANSFER
                     | SET_ATTRIBUTES
-                    | LOCK_FILE,
+                    | LOCK_FILE
+                    | SYNC_CONFIGURE,
                 movable: false,
                 duplicable: true,
                 creatable: false,
@@ -408,7 +410,8 @@ impl AuthorityPolicy for Policy {
                     | EXECUTE
                     | PROTECT
                     | SET_ATTRIBUTES
-                    | LOCK_FILE,
+                    | LOCK_FILE
+                    | SYNC_CONFIGURE,
             ),
             ("/bin/sh", "process.task-factory") => (304, 6, CREATE_PROCESS | DUPLICATE | TRANSFER),
             ("/bin/sh" | "/svc/session-manager", "process.task-group") => {
@@ -493,6 +496,7 @@ impl AuthorityPolicy for Policy {
             "protect" => Some(PROTECT),
             "set-attributes" => Some(SET_ATTRIBUTES),
             "lock-file" => Some(LOCK_FILE),
+            "sync-configure" => Some(SYNC_CONFIGURE),
             "create-task-group" => Some(CREATE_TASK_GROUP),
             "create-resource-domain" => Some(CREATE_RESOURCE_DOMAIN),
             "derive" => Some(DERIVE),
