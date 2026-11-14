@@ -32,6 +32,7 @@ const WORKING_DIRECTORY_RIGHTS: DirectoryRights = DirectoryRights::READ
     .union(DirectoryRights::WRITE)
     .union(DirectoryRights::SET_ATTRIBUTES)
     .union(DirectoryRights::LOCK_FILE)
+    .union(DirectoryRights::SYNC_CONFIGURE)
     .union(DirectoryRights::INSPECT)
     .union(DirectoryRights::EXECUTE)
     .union(DirectoryRights::PROTECT)

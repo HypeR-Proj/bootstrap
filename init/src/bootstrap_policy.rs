@@ -256,6 +256,7 @@ impl AuthorityPolicy for BootstrapPolicy {
             "protect" => Some(Rights::PROTECT.bits()),
             "set-attributes" => Some(Rights::SET_ATTRIBUTES.bits()),
             "lock-file" => Some(Rights::LOCK_FILE.bits()),
+            "sync-configure" => Some(Rights::SYNC_CONFIGURE.bits()),
             "sched-lower" => Some(Rights::SCHED_LOWER.bits()),
             "sched-priority" => Some(Rights::SCHED_PRIORITY.bits()),
             "sched-class" => Some(Rights::SCHED_CLASS.bits()),
@@ -341,6 +342,7 @@ const fn root_directory_rights() -> Rights {
         .union(Rights::WRITE)
         .union(Rights::SET_ATTRIBUTES)
         .union(Rights::LOCK_FILE)
+        .union(Rights::SYNC_CONFIGURE)
 }
 
 const fn library_directory_rights() -> Rights {
